@@ -1,9 +1,9 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
@@ -14,13 +14,17 @@ import androidx.compose.material.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.foundation.gestures.detectTapGestures
 import java.util.*
 
+// Library block creation helper
 private fun createLibraryBlock(type: BlockType, content: String): Block {
     return createBlockWithConnections(
         id = UUID.randomUUID().toString(),
@@ -32,8 +36,16 @@ private fun createLibraryBlock(type: BlockType, content: String): Block {
 @Composable
 @Preview
 fun app() {
+    var selectedBlock by remember { mutableStateOf<Block?>(null) }
+    var mousePosition by remember { mutableStateOf(Offset.Zero) }
+
     val blockState = remember { BlockState() }
-    
+
+    LaunchedEffect(Unit) {
+        // This would normally use a real mouse position tracking
+        // but for now we'll just use the drag function in the workspace
+    }
+
     MaterialTheme {
         Row(modifier = Modifier.fillMaxSize()) {
             // Block Library Panel
@@ -41,23 +53,50 @@ fun app() {
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(250.dp)
-                    .background(Color(0xFFF5F5F5)),
+                    .background(Color.LightGray)
+                    .padding(8.dp),
                 onBlockSelected = { block ->
-                    blockState.addBlock(createBlockWithConnections(
+                    selectedBlock = block.copy(
                         id = UUID.randomUUID().toString(),
-                        type = block.type,
-                        content = block.content
-                    ))
+                        position = mousePosition
+                    )
                 }
             )
-            
+
             // Workspace Area
-            workspaceArea(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.White),
-                blockState = blockState
-            )
+                    .background(Color.White)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                mousePosition = offset
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                mousePosition = change.position
+
+                                if (blockState.dragState.isActive) {
+                                    blockState.updateDragPosition(change.position)
+                                }
+                            }
+                        )
+                    }
+            ) {
+                workspaceArea(
+                    modifier = Modifier.fillMaxSize(),
+                    blockState = blockState
+                )
+
+                // Add new block when selected
+                LaunchedEffect(selectedBlock) {
+                    selectedBlock?.let { block ->
+                        blockState.addBlock(block)
+                        selectedBlock = null
+                    }
+                }
+            }
         }
     }
 }
@@ -68,7 +107,7 @@ fun blockLibraryPanel(
     onBlockSelected: (Block) -> Unit
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<String>()) }
-    
+
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(16.dp),
@@ -77,13 +116,13 @@ fun blockLibraryPanel(
         item {
             Text("AWS Infrastructure", style = MaterialTheme.typography.h6)
         }
-        
+
         // Compute Resources
         item {
             collapsibleCategory(
                 name = "Compute",
                 isExpanded = expandedCategories.contains("Compute"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Compute")) {
                         expandedCategories - "Compute"
                     } else {
@@ -99,13 +138,13 @@ fun blockLibraryPanel(
                 onBlockSelected = onBlockSelected
             )
         }
-        
+
         // Database Resources
         item {
             collapsibleCategory(
                 name = "Database",
                 isExpanded = expandedCategories.contains("Database"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Database")) {
                         expandedCategories - "Database"
                     } else {
@@ -121,13 +160,13 @@ fun blockLibraryPanel(
                 onBlockSelected = onBlockSelected
             )
         }
-        
+
         // Networking Resources
         item {
             collapsibleCategory(
                 name = "Networking",
                 isExpanded = expandedCategories.contains("Networking"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Networking")) {
                         expandedCategories - "Networking"
                     } else {
@@ -143,13 +182,13 @@ fun blockLibraryPanel(
                 onBlockSelected = onBlockSelected
             )
         }
-        
+
         // Security Resources
         item {
             collapsibleCategory(
                 name = "Security",
                 isExpanded = expandedCategories.contains("Security"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Security")) {
                         expandedCategories - "Security"
                     } else {
@@ -165,13 +204,13 @@ fun blockLibraryPanel(
                 onBlockSelected = onBlockSelected
             )
         }
-        
+
         // Integration Resources
         item {
             collapsibleCategory(
                 name = "Integration",
                 isExpanded = expandedCategories.contains("Integration"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Integration")) {
                         expandedCategories - "Integration"
                     } else {
@@ -187,13 +226,13 @@ fun blockLibraryPanel(
                 onBlockSelected = onBlockSelected
             )
         }
-        
+
         // Monitoring Resources
         item {
             collapsibleCategory(
                 name = "Monitoring",
                 isExpanded = expandedCategories.contains("Monitoring"),
-                onToggle = { 
+                onToggle = {
                     expandedCategories = if (expandedCategories.contains("Monitoring")) {
                         expandedCategories - "Monitoring"
                     } else {
@@ -240,9 +279,9 @@ fun collapsibleCategory(
                 )
             }
         }
-        
+
         if (isExpanded) {
-            blocks.forEach { block ->
+            for (block in blocks) {
                 blockItem(
                     block = block,
                     onClick = { onBlockSelected(block) }
@@ -257,87 +296,56 @@ fun workspaceArea(
     modifier: Modifier = Modifier,
     blockState: BlockState
 ) {
-    var activeConnection by remember { mutableStateOf<Connection?>(null) }
-    val selectedConnectionPoint by remember { mutableStateOf<ConnectionPoint?>(null) }
-    var draggingConnectionPoint by remember { mutableStateOf<ConnectionPoint?>(null) }
-    
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFFF8F8F8))
-    ) {
-        // Draw existing connections
-        blockState.connections.forEach { connection ->
-            val fromBlock = blockState.blocks.find { it.id == connection.fromBlockId }
-            val toBlock = blockState.blocks.find { it.id == connection.toBlockId }
-            if (fromBlock != null && toBlock != null) {
-                connectionLine(
-                    connection = connection,
-                    fromBlock = fromBlock,
-                    toBlock = toBlock,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-        
-        // Draw blocks
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp)
-        ) {
-            items(blockState.blocks) { block ->
-                draggableBlock(
-                    block = block,
-                    onDragEnd = { newPosition ->
-                        blockState.updateBlockPosition(block.id, newPosition)
-                    },
-                    onRename = { newContent ->
-                        blockState.updateBlockContent(block.id, newContent)
-                    },
-                    onConnectionPointSelected = { point ->
-                        if (draggingConnectionPoint == null) {
-                            draggingConnectionPoint = point
-                            activeConnection = Connection(
-                                id = UUID.randomUUID().toString(),
-                                fromBlockId = block.id,
-                                toBlockId = "",
-                                fromPointId = point.id,
-                                toPointId = ""
-                            )
-                        } else {
-                            // Complete the connection
-                            if (point.type != draggingConnectionPoint!!.type) {
-                                activeConnection = activeConnection?.copy(
-                                    toBlockId = block.id,
-                                    toPointId = point.id
-                                )
-                                activeConnection?.let { blockState.addConnection(it) }
-                            }
-                            draggingConnectionPoint = null
-                            activeConnection = null
-                        }
+            .pointerInput(Unit) {
+                detectDragGestures { change, _ ->
+                    change.consume()
+                    // Update the connection drag position if active
+                    if (blockState.dragState.isActive) {
+                        blockState.updateDragPosition(change.position)
                     }
-                )
+                }
             }
-        }
-        
-        // Draw active connection line if dragging
-        activeConnection?.let { connection ->
-            val fromBlock = blockState.blocks.find { it.id == connection.fromBlockId }
-            val fromPoint = fromBlock?.connectionPoints?.find { it.id == connection.fromPointId }
-            selectedConnectionPoint?.let { toPoint ->
-                connectionLine(
-                    connection = connection,
-                    fromBlock = fromBlock!!,
-                    toBlock = Block(
-                        id = "temp",
-                        type = BlockType.COMPUTE,
-                        position = toPoint.position,
-                        content = ""
-                    ),
-                    modifier = Modifier.fillMaxSize()
-                )
+            .pointerInput(Unit) {
+                detectTapGestures { position ->
+                    // When the user clicks while dragging a connection, complete it
+                    if (blockState.dragState.isActive) {
+                        blockState.endConnectionDrag(position)
+                    }
+                }
             }
+    ) {
+        // Draw connections between blocks
+        ConnectionsCanvas(
+            connections = blockState.connections,
+            blocks = blockState.blocks,
+            dragState = blockState.dragState,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Draw blocks
+        for (block in blockState.blocks) {
+            BlockView(
+                block = block,
+                onDragEnd = { newPosition ->
+                    blockState.updateBlockPosition(block.id, newPosition)
+                },
+                onRename = { newContent ->
+                    blockState.updateBlockContent(block.id, newContent)
+                },
+                onConnectionDragStart = { point, blockId ->
+                    blockState.startConnectionDrag(point, blockId)
+                },
+                onUpdateBlockSize = { blockId, size ->
+                    blockState.updateBlockSize(blockId, size)
+                },
+                onUpdateConnectionPointPosition = { blockId, pointId, position ->
+                    blockState.updateConnectionPointPosition(blockId, pointId, position)
+                }
+            )
         }
     }
 }
