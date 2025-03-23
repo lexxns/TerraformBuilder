@@ -41,6 +41,8 @@ private fun createLibraryBlock(type: BlockType, content: String): Block {
 fun app() {
     var selectedBlock by remember { mutableStateOf<Block?>(null) }
     var mousePosition by remember { mutableStateOf(Offset.Zero) }
+    var hoverPosition by remember { mutableStateOf(Offset.Zero) }
+    var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current.density
 
     val blockState = remember { BlockState() }
@@ -74,15 +76,28 @@ fun app() {
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                mousePosition = offset
+                                hoverPosition = offset
+                                hoverDpPosition = offset.toDpOffset(density)
+                                
+                                // Debug output
+                                println("App: Drag started at: $hoverDpPosition")
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                mousePosition = change.position
+                                hoverPosition = change.position
+                                hoverDpPosition = change.position.toDpOffset(density)
 
+                                // Update the connection drag position if active
                                 if (blockState.dragState.isActive) {
-                                    // Convert to dp
-                                    blockState.updateDragPosition(change.position.toDpOffset(density))
+                                    println("App: Updating drag position to: $hoverDpPosition (active: ${blockState.dragState.isActive})")
+                                    blockState.updateDragPosition(hoverDpPosition)
+                                }
+                            },
+                            onDragEnd = { 
+                                println("App: Drag ended at: $hoverDpPosition")
+                                // When the drag ends, attempt to complete any active connection
+                                if (blockState.dragState.isActive) {
+                                    blockState.endConnectionDrag(hoverDpPosition)
                                 }
                             }
                         )
@@ -90,7 +105,9 @@ fun app() {
             ) {
                 workspaceArea(
                     modifier = Modifier.fillMaxSize(),
-                    blockState = blockState
+                    blockState = blockState,
+                    hoverPosition = hoverPosition,
+                    hoverDpPosition = hoverDpPosition
                 )
 
                 // Add new block when selected
@@ -298,13 +315,13 @@ fun collapsibleCategory(
 @Composable
 fun workspaceArea(
     modifier: Modifier = Modifier,
-    blockState: BlockState
+    blockState: BlockState,
+    hoverPosition: Offset,
+    hoverDpPosition: Offset
 ) {
     // State to track clicked positions for debugging
     var clickedPosition by remember { mutableStateOf<Offset?>(null) }
     var clickedDpPosition by remember { mutableStateOf<Offset?>(null) }
-    var hoverPosition by remember { mutableStateOf(Offset.Zero) }
-    var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
     var selectedBlockId by remember { mutableStateOf<String?>(null) }
     val density = LocalDensity.current.density
 
@@ -322,19 +339,6 @@ fun workspaceArea(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFFF8F8F8))
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    change.consume()
-                    // Update hover position
-                    hoverPosition = change.position
-                    hoverDpPosition = change.position.toDpOffset(density)
-
-                    // Update the connection drag position if active
-                    if (blockState.dragState.isActive) {
-                        blockState.updateDragPosition(hoverDpPosition)
-                    }
-                }
-            }
             .pointerInput(Unit) {
                 detectTapGestures { position ->
                     // Record clicked position for debugging
@@ -357,11 +361,6 @@ fun workspaceArea(
                     }?.id
 
                     selectedBlockId = clickedBlockId
-
-                    // When the user clicks while dragging a connection, complete it
-                    if (blockState.dragState.isActive) {
-                        blockState.endConnectionDrag(clickedDpPosition!!)
-                    }
                 }
             }
     ) {
@@ -380,6 +379,7 @@ fun workspaceArea(
         ConnectionsCanvas(
             connections = blockState.connections,
             dragState = blockState.dragState,
+            blocks = blockState.blocks,
             modifier = Modifier.fillMaxSize()
         )
 

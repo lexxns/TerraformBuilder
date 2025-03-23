@@ -193,10 +193,21 @@ class BlockState {
     }
 
     fun startConnectionDrag(block: Block, pointType: ConnectionPointType) {
-        dragState.isActive = true
+        // First reset any existing drag state
+        dragState.isActive = false
+        dragState.sourceBlock = null
+        dragState.sourcePointType = null
+        dragState.currentPosition = Offset.Zero
+        
+        // Now set up the new drag state
         dragState.sourceBlock = block
         dragState.sourcePointType = pointType
         dragState.currentPosition = block.getConnectionPointPosition(pointType)
+        dragState.isActive = true
+        
+        // Debug output
+        println("Starting connection drag from block: ${block.content}, point type: $pointType")
+        println("Initial position: ${dragState.currentPosition}")
     }
 
     fun updateDragPosition(position: Offset) {
@@ -210,29 +221,51 @@ class BlockState {
         // Position is already in dp
         val endPosition = position
         
+        // Debug the connection attempt
+        println("Ending connection drag at position: $endPosition")
+        println("Source block: ${dragState.sourceBlock!!.content}, point type: ${dragState.sourcePointType}")
+        
         // Find if there's a connection point near the end position
         val nearbyBlocks = _blocks.map { block ->
-            Pair(block, findNearestConnectionPoint(block, endPosition))
+            val result = findNearestConnectionPoint(block, endPosition)
+            println("Checking block ${block.content}: ${result.first}, type: ${result.second}, distance: ${result.third}")
+            Pair(block, result)
         }.filter { (block, result) ->
             // Only consider valid results, not from the same block, and with compatible connection types
-            result.first && block.id != dragState.sourceBlock!!.id && 
-                    result.second != dragState.sourcePointType
+            val validBlock = block.id != dragState.sourceBlock!!.id
+            val validDistance = result.first // isNearby
+            val compatibleTypes = result.second != dragState.sourcePointType
+            
+            println("Block ${block.content} valid? " +
+                "different block: $validBlock, " +
+                "nearby: $validDistance, " +
+                "compatible types: $compatibleTypes")
+            
+            validBlock && validDistance && compatibleTypes
         }
 
+        println("Found ${nearbyBlocks.size} nearby compatible blocks")
+        
         if (nearbyBlocks.isNotEmpty()) {
-            val (targetBlock, _) = nearbyBlocks.minByOrNull { 
+            val (targetBlock, targetResult) = nearbyBlocks.minByOrNull { 
                 val (_, result) = it
                 result.third // distance
             } ?: return
 
+            println("Creating connection to ${targetBlock.content} with point type ${targetResult.second}")
+            
             // Determine source and target based on connection point types
             if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
                 // Source block's output to target block's input
                 addConnection(dragState.sourceBlock!!, targetBlock)
+                println("Connected ${dragState.sourceBlock!!.content} OUTPUT -> ${targetBlock.content} INPUT")
             } else {
                 // Target block's output to source block's input
                 addConnection(targetBlock, dragState.sourceBlock!!)
+                println("Connected ${targetBlock.content} OUTPUT -> ${dragState.sourceBlock!!.content} INPUT")
             }
+        } else {
+            println("No valid connection points found")
         }
 
         // Reset drag state
@@ -244,15 +277,20 @@ class BlockState {
     // Helper function to find the nearest connection point on a block
     // Returns Triple(isNearby, connectionPointType, distance)
     private fun findNearestConnectionPoint(block: Block, position: Offset): Triple<Boolean, ConnectionPointType, Float> {
-        val inputDistance = (block.inputPosition - position).getDistance()
-        val outputDistance = (block.outputPosition - position).getDistance()
+        val inputPosition = block.getConnectionPointPosition(ConnectionPointType.INPUT)
+        val outputPosition = block.getConnectionPointPosition(ConnectionPointType.OUTPUT)
+        
+        val inputDistance = (inputPosition - position).getDistance()
+        val outputDistance = (outputPosition - position).getDistance()
         
         val minDistance = minOf(inputDistance, outputDistance)
         val nearestType = if (inputDistance < outputDistance) 
             ConnectionPointType.INPUT else ConnectionPointType.OUTPUT
             
-        // Distance threshold in dp
-        return Triple(minDistance < 20f, nearestType, minDistance)
+        // Distance threshold in dp - increased to make connections easier
+        val isNearby = minDistance < 30f
+        
+        return Triple(isNearby, nearestType, minDistance)
     }
 }
 
@@ -408,17 +446,49 @@ fun ConnectionPointView(
     type: ConnectionPointType,
     onConnectionStart: () -> Unit
 ) {
+    var isHovered by remember { mutableStateOf(false) }
+    
     Box(
         modifier = Modifier
-            .size(12.dp)
+            .size(14.dp)
             .background(
                 color = when (type) {
-                    ConnectionPointType.INPUT -> Color.Green
-                    ConnectionPointType.OUTPUT -> Color.Red
+                    ConnectionPointType.INPUT -> if (isHovered) Color.Green else Color.Green.copy(alpha = 0.7f)
+                    ConnectionPointType.OUTPUT -> if (isHovered) Color.Red else Color.Red.copy(alpha = 0.7f)
                 },
                 shape = CircleShape
             )
+            .border(
+                width = if (isHovered) 2.dp else 1.dp,
+                color = Color.Black,
+                shape = CircleShape
+            )
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = {
+                        // Start the connection when dragging begins
+                        onConnectionStart()
+                        isHovered = true
+                    },
+                    onDragEnd = {
+                        isHovered = false
+                    },
+                    onDrag = { _, _ ->
+                        // Just consume the drag - actual position updates are handled in the parent
+                    }
+                )
+            }
             .clickable { onConnectionStart() }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = { 
+                        isHovered = true
+                        // Wait for the pointer to be released
+                        tryAwaitRelease()
+                        isHovered = false
+                    }
+                )
+            }
     )
 }
 
@@ -427,6 +497,7 @@ fun ConnectionPointView(
 fun ConnectionsCanvas(
     connections: List<Connection>,
     dragState: ConnectionDragState,
+    blocks: List<Block>,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current.density
@@ -456,6 +527,56 @@ fun ConnectionsCanvas(
                 drawConnection(sourcePoint, targetPoint)
             } else {
                 drawConnection(targetPoint, sourcePoint)
+            }
+            
+            // Highlight potential connection points
+            blocks.forEach { block ->
+                // Skip the block we're dragging from
+                if (block.id != dragState.sourceBlock!!.id) {
+                    val connectablePointType = if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
+                        ConnectionPointType.INPUT
+                    } else {
+                        ConnectionPointType.OUTPUT
+                    }
+                    
+                    val connectablePoint = block.getConnectionPointPosition(connectablePointType)
+                    val distance = (dragState.currentPosition - connectablePoint).getDistance()
+                    
+                    // If we're close to a valid connection point, highlight it
+                    if (distance < 30f) {
+                        val pointPx = dpToPx(connectablePoint)
+                        drawCircle(
+                            color = if (connectablePointType == ConnectionPointType.INPUT) 
+                                Color.Green.copy(alpha = 0.5f) else Color.Red.copy(alpha = 0.5f),
+                            radius = 15f,
+                            center = pointPx
+                        )
+                        
+                        // Draw dotted guide line to help with alignment
+                        val dashLength = 5f
+                        val gapLength = 5f
+                        val totalLength = (pointPx - targetPoint).getDistance()
+                        val angle = atan2(pointPx.y - targetPoint.y, pointPx.x - targetPoint.x)
+                        
+                        var distance = 0f
+                        while (distance < totalLength) {
+                            val startX = targetPoint.x + cos(angle) * distance
+                            val startY = targetPoint.y + sin(angle) * distance
+                            val endX = targetPoint.x + cos(angle) * (distance + dashLength).coerceAtMost(totalLength)
+                            val endY = targetPoint.y + sin(angle) * (distance + dashLength).coerceAtMost(totalLength)
+                            
+                            drawLine(
+                                color = Color.Gray.copy(alpha = 0.5f),
+                                start = Offset(startX, startY),
+                                end = Offset(endX, endY),
+                                strokeWidth = 1f,
+                                cap = StrokeCap.Round
+                            )
+                            
+                            distance += dashLength + gapLength
+                        }
+                    }
+                }
             }
         }
     }
