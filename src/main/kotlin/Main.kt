@@ -46,10 +46,46 @@ fun app() {
     val density = LocalDensity.current.density
 
     val blockState = remember { BlockState() }
-
+    
+    // Add sample blocks on first launch
     LaunchedEffect(Unit) {
-        // This would normally use a real mouse position tracking
-        // but for now we'll just use the drag function in the workspace
+        // Add some sample blocks
+        blockState.addBlock(
+            createBlock(
+                id = "block1",
+                type = BlockType.COMPUTE,
+                content = "Compute Instance"
+            ).apply { position = Offset(100f, 100f) }
+        )
+        
+        blockState.addBlock(
+            createBlock(
+                id = "block2",
+                type = BlockType.DATABASE,
+                content = "Database"
+            ).apply { position = Offset(400f, 200f) }
+        )
+        
+        println("App: LaunchedEffect completed - blocks added")
+    }
+    
+    // Track when the mouse button is down during a drag
+    var isMouseDown by remember { mutableStateOf(false) }
+    
+    // When blocks start a connection, update our state
+    val onConnectionDragStart: (Block, ConnectionPointType) -> Unit = { block, pointType ->
+        // Start the connection
+        blockState.startConnectionDrag(block, pointType)
+        
+        // Set the initial drag position to the connection point's position
+        val connectionPoint = block.getConnectionPointPosition(pointType)
+        blockState.updateDragPosition(connectionPoint)
+        
+        // Set the mouse as down so we know we're dragging a connection
+        isMouseDown = true
+        
+        println("APP: Connection drag started from ${block.content}, type $pointType")
+        println("APP: Initial drag position set to $connectionPoint")
     }
 
     MaterialTheme {
@@ -78,36 +114,53 @@ fun app() {
                             onDragStart = { offset ->
                                 hoverPosition = offset
                                 hoverDpPosition = offset.toDpOffset(density)
-                                
-                                // Debug output
-                                println("App: Drag started at: $hoverDpPosition")
+                                println("WORKSPACE: Drag started at position: $offset, dp: $hoverDpPosition")
                             },
                             onDrag = { change, _ ->
                                 change.consume()
                                 hoverPosition = change.position
                                 hoverDpPosition = change.position.toDpOffset(density)
-
-                                // Update the connection drag position if active
+                                
+                                // Update connection drag position if active
                                 if (blockState.dragState.isActive) {
-                                    println("App: Updating drag position to: $hoverDpPosition (active: ${blockState.dragState.isActive})")
                                     blockState.updateDragPosition(hoverDpPosition)
                                 }
                             },
-                            onDragEnd = { 
-                                println("App: Drag ended at: $hoverDpPosition")
-                                // When the drag ends, attempt to complete any active connection
+                            onDragEnd = {
+                                println("WORKSPACE: Drag ended at position: $hoverDpPosition")
+                                // When the drag ends, complete any active connection
                                 if (blockState.dragState.isActive) {
                                     blockState.endConnectionDrag(hoverDpPosition)
                                 }
+                                isMouseDown = false
                             }
                         )
+                    }
+                    // Add separate pointer input for mouse moves without dragging
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val position = event.changes.first().position
+                                
+                                // Update hover position on any mouse movement
+                                hoverPosition = position
+                                hoverDpPosition = position.toDpOffset(density)
+                                
+                                // If we're dragging a connection, update its position
+                                if (blockState.dragState.isActive && isMouseDown) {
+                                    blockState.updateDragPosition(hoverDpPosition)
+                                }
+                            }
+                        }
                     }
             ) {
                 workspaceArea(
                     modifier = Modifier.fillMaxSize(),
                     blockState = blockState,
                     hoverPosition = hoverPosition,
-                    hoverDpPosition = hoverDpPosition
+                    hoverDpPosition = hoverDpPosition,
+                    onConnectionDragStart = onConnectionDragStart
                 )
 
                 // Add new block when selected
@@ -317,7 +370,8 @@ fun workspaceArea(
     modifier: Modifier = Modifier,
     blockState: BlockState,
     hoverPosition: Offset,
-    hoverDpPosition: Offset
+    hoverDpPosition: Offset,
+    onConnectionDragStart: (Block, ConnectionPointType) -> Unit
 ) {
     // State to track clicked positions for debugging
     var clickedPosition by remember { mutableStateOf<Offset?>(null) }
@@ -393,9 +447,7 @@ fun workspaceArea(
                 onRename = { newContent ->
                     blockState.updateBlockContent(block.id, newContent)
                 },
-                onConnectionDragStart = { sourceBlock, pointType ->
-                    blockState.startConnectionDrag(sourceBlock, pointType)
-                },
+                onConnectionDragStart = onConnectionDragStart,
                 onUpdateBlockSize = { blockId, size ->
                     blockState.updateBlockSize(blockId, size)
                 }

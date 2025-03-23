@@ -34,6 +34,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.PI
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // Basic data structures
 enum class ConnectionPointType {
@@ -193,21 +196,18 @@ class BlockState {
     }
 
     fun startConnectionDrag(block: Block, pointType: ConnectionPointType) {
-        // First reset any existing drag state
-        dragState.isActive = false
-        dragState.sourceBlock = null
-        dragState.sourcePointType = null
-        dragState.currentPosition = Offset.Zero
+        println("BLOCKSTATE: Starting connection drag from ${block.content} with point type $pointType")
         
-        // Now set up the new drag state
+        // Initialize a new drag state
+        dragState.isActive = true
         dragState.sourceBlock = block
         dragState.sourcePointType = pointType
-        dragState.currentPosition = block.getConnectionPointPosition(pointType)
-        dragState.isActive = true
         
-        // Debug output
-        println("Starting connection drag from block: ${block.content}, point type: $pointType")
-        println("Initial position: ${dragState.currentPosition}")
+        // Set the initial position to the connection point's position
+        val connectionPointPosition = block.getConnectionPointPosition(pointType)
+        dragState.currentPosition = connectionPointPosition
+        
+        println("BLOCKSTATE: Connection drag initialized at $connectionPointPosition")
     }
 
     fun updateDragPosition(position: Offset) {
@@ -353,6 +353,7 @@ fun BlockView(
             ConnectionPointView(
                 type = ConnectionPointType.INPUT,
                 onConnectionStart = {
+                    println("BLOCK: Starting INPUT connection for block ${block.content}")
                     onConnectionDragStart(block, ConnectionPointType.INPUT)
                 }
             )
@@ -396,9 +397,6 @@ fun BlockView(
                                 // Update the block position in the BlockState during drag as well
                                 // This ensures connection points are updated in real-time
                                 onDragEnd(newPosition)
-                                
-                                // For debugging only
-                                println("Dragging block ${block.content} to dp: $newPosition")
                             }
                         )
                     }
@@ -433,6 +431,7 @@ fun BlockView(
             ConnectionPointView(
                 type = ConnectionPointType.OUTPUT,
                 onConnectionStart = {
+                    println("BLOCK: Starting OUTPUT connection for block ${block.content}")
                     onConnectionDragStart(block, ConnectionPointType.OUTPUT)
                 }
             )
@@ -447,47 +446,61 @@ fun ConnectionPointView(
     onConnectionStart: () -> Unit
 ) {
     var isHovered by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(false) } 
     
     Box(
         modifier = Modifier
-            .size(14.dp)
+            .size(20.dp) // Larger size for easier interaction
             .background(
                 color = when (type) {
-                    ConnectionPointType.INPUT -> if (isHovered) Color.Green else Color.Green.copy(alpha = 0.7f)
-                    ConnectionPointType.OUTPUT -> if (isHovered) Color.Red else Color.Red.copy(alpha = 0.7f)
+                    ConnectionPointType.INPUT -> if (isPressed) Color.Green else if (isHovered) Color.Green.copy(alpha = 0.9f) else Color.Green.copy(alpha = 0.7f)
+                    ConnectionPointType.OUTPUT -> if (isPressed) Color.Red else if (isHovered) Color.Red.copy(alpha = 0.9f) else Color.Red.copy(alpha = 0.7f)
                 },
                 shape = CircleShape
             )
             .border(
-                width = if (isHovered) 2.dp else 1.dp,
+                width = if (isPressed || isHovered) 3.dp else 2.dp,
                 color = Color.Black,
                 shape = CircleShape
             )
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = {
-                        // Start the connection when dragging begins
-                        onConnectionStart()
-                        isHovered = true
-                    },
-                    onDragEnd = {
-                        isHovered = false
-                    },
-                    onDrag = { _, _ ->
-                        // Just consume the drag - actual position updates are handled in the parent
-                    }
-                )
-            }
-            .clickable { onConnectionStart() }
+            // Support both click and drag with consistent visual feedback
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = { 
+                        isPressed = true
                         isHovered = true
-                        // Wait for the pointer to be released
-                        tryAwaitRelease()
+                        
+                        // This is critical - immediately start connection on press
+                        println("CONNECTION POINT: Starting connection - Press detected on $type")
+                        onConnectionStart()
+                        
+                        // Wait for release
+                        if (tryAwaitRelease()) {
+                            println("CONNECTION POINT: Released on $type")
+                        }
+                        
+                        isPressed = false
                         isHovered = false
                     }
                 )
+            }
+            // Also track hover state for visual feedback
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        // Check if the pointer is over this connection point
+                        val isPointerOver = event.changes.any { 
+                            it.position.x >= 0 && it.position.y >= 0 &&
+                            it.position.x <= size.width && it.position.y <= size.height
+                        }
+                        
+                        // Update hover state based on pointer position
+                        if (isPointerOver != isHovered && !isPressed) {
+                            isHovered = isPointerOver
+                        }
+                    }
+                }
             }
     )
 }
@@ -517,6 +530,8 @@ fun ConnectionsCanvas(
 
         // Draw connection being dragged
         if (dragState.isActive && dragState.sourceBlock != null && dragState.sourcePointType != null) {
+            println("Drawing active connection: ${dragState.sourceBlock!!.content} from ${dragState.sourcePointType} to ${dragState.currentPosition}")
+            
             val sourcePoint = dpToPx(
                 dragState.sourceBlock!!.getConnectionPointPosition(dragState.sourcePointType!!)
             )
@@ -528,6 +543,13 @@ fun ConnectionsCanvas(
             } else {
                 drawConnection(targetPoint, sourcePoint)
             }
+            
+            // Draw little circle at current drag position for debugging
+            drawCircle(
+                color = Color.Blue.copy(alpha = 0.5f),
+                radius = 5f,
+                center = targetPoint
+            )
             
             // Highlight potential connection points
             blocks.forEach { block ->
