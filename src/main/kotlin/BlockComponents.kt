@@ -23,9 +23,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.*
 import kotlin.math.atan2
@@ -35,33 +36,71 @@ import kotlin.math.sqrt
 import kotlin.math.PI
 
 // Basic data structures
-data class ConnectionPoint(
-    val id: String,
-    val type: ConnectionType,
-    val relativePosition: Offset = Offset.Zero,
-    var absolutePosition: Offset = Offset.Zero
-)
-
-enum class ConnectionType {
+enum class ConnectionPointType {
     INPUT, OUTPUT
 }
 
-data class Connection(
-    val id: String,
-    val fromBlockId: String,
-    val toBlockId: String,
-    val fromPointId: String,
-    val toPointId: String
-)
+/**
+ * Extension functions to convert between Dp and pixels when needed
+ */
+fun Offset.toDpOffset(density: Float): Offset {
+    return Offset(x / density, y / density)
+}
 
+fun Offset.toPixelOffset(density: Float): Offset {
+    return Offset(x * density, y * density)
+}
+
+/**
+ * Block class that stores all positions in dp
+ */
 data class Block(
     val id: String,
     val type: BlockType,
-    val position: Offset = Offset.Zero,
+    private var _position: Offset = Offset.Zero,  // Position in dp
     var content: String,
-    val connectionPoints: List<ConnectionPoint> = emptyList(),
-    var size: Offset = Offset.Zero
-)
+    private var _size: Offset = Offset.Zero,      // Size in dp
+    var inputPosition: Offset = Offset.Zero,  // Position of the input connection point in dp
+    var outputPosition: Offset = Offset.Zero  // Position of the output connection point in dp
+) {
+    // Property accessors with auto-update of connection points
+    var position: Offset
+        get() = _position
+        set(value) {
+            _position = value
+            updateConnectionPoints()
+        }
+        
+    var size: Offset
+        get() = _size
+        set(value) {
+            _size = value
+            updateConnectionPoints()
+        }
+    
+    // Returns the position of the specified connection point in dp
+    fun getConnectionPointPosition(type: ConnectionPointType): Offset {
+        return when (type) {
+            ConnectionPointType.INPUT -> inputPosition
+            ConnectionPointType.OUTPUT -> outputPosition
+        }
+    }
+    
+    // Updates the connection point positions based on the block's position and size
+    fun updateConnectionPoints() {
+        // Calculate connection points directly in dp
+        // For input: center of left edge
+        inputPosition = _position + Offset(0f, _size.y / 2f)
+        
+        // For output: center of right edge
+        outputPosition = _position + Offset(_size.x, _size.y / 2f)
+        
+        // Print debug info
+        println("Block $content position: $_position, size: $_size")
+        println("Input at: $inputPosition, Output at: $outputPosition")
+        println("--------------------")
+    }
+}
 
 enum class BlockType {
     COMPUTE, DATABASE, NETWORKING, SECURITY, INTEGRATION, MONITORING
@@ -70,9 +109,29 @@ enum class BlockType {
 // State for tracking active connection being drawn
 class ConnectionDragState {
     var isActive by mutableStateOf(false)
-    var startPoint by mutableStateOf<ConnectionPoint?>(null)
-    var currentPosition by mutableStateOf(Offset.Zero)
-    var sourceBlockId by mutableStateOf<String?>(null)
+    var sourceBlock by mutableStateOf<Block?>(null)
+    var sourcePointType by mutableStateOf<ConnectionPointType?>(null)
+    var currentPosition by mutableStateOf(Offset.Zero)  // in dp
+}
+
+// Connection class with direct references to blocks
+data class Connection(
+    val id: String = UUID.randomUUID().toString(),
+    val sourceBlock: Block,
+    val targetBlock: Block
+) {
+    val sourcePointType = ConnectionPointType.OUTPUT
+    val targetPointType = ConnectionPointType.INPUT
+    
+    // Get start point position (source block's output) in dp
+    fun getStartPosition(): Offset {
+        return sourceBlock.getConnectionPointPosition(sourcePointType)
+    }
+    
+    // Get end point position (target block's input) in dp
+    fun getEndPosition(): Offset {
+        return targetBlock.getConnectionPointPosition(targetPointType)
+    }
 }
 
 // Block state management
@@ -92,13 +151,14 @@ class BlockState {
     fun removeBlock(blockId: String) {
         val block = _blocks.find { it.id == blockId } ?: return
         _blocks.remove(block)
-        _connections.removeAll { it.fromBlockId == blockId || it.toBlockId == blockId }
+        _connections.removeAll { it.sourceBlock.id == blockId || it.targetBlock.id == blockId }
     }
 
     fun updateBlockPosition(blockId: String, newPosition: Offset) {
         val index = _blocks.indexOfFirst { it.id == blockId }
         if (index != -1) {
-            _blocks[index] = _blocks[index].copy(position = newPosition)
+            _blocks[index].position = newPosition
+            // Connection points are updated automatically by the Block class
         }
     }
 
@@ -106,16 +166,7 @@ class BlockState {
         val index = _blocks.indexOfFirst { it.id == blockId }
         if (index != -1) {
             _blocks[index].size = size
-        }
-    }
-
-    fun updateConnectionPointPosition(blockId: String, pointId: String, position: Offset) {
-        val blockIndex = _blocks.indexOfFirst { it.id == blockId }
-        if (blockIndex != -1) {
-            val pointIndex = _blocks[blockIndex].connectionPoints.indexOfFirst { it.id == pointId }
-            if (pointIndex != -1) {
-                _blocks[blockIndex].connectionPoints[pointIndex].absolutePosition = position
-            }
+            // Connection points are updated automatically by the Block class
         }
     }
 
@@ -126,17 +177,14 @@ class BlockState {
         }
     }
 
-    fun addConnection(connection: Connection) {
+    fun addConnection(sourceBlock: Block, targetBlock: Block) {
         // Check if connection already exists
         val exists = _connections.any {
-            it.fromBlockId == connection.fromBlockId &&
-                    it.toBlockId == connection.toBlockId &&
-                    it.fromPointId == connection.fromPointId &&
-                    it.toPointId == connection.toPointId
+            it.sourceBlock.id == sourceBlock.id && it.targetBlock.id == targetBlock.id
         }
 
         if (!exists) {
-            _connections.add(connection)
+            _connections.add(Connection(sourceBlock = sourceBlock, targetBlock = targetBlock))
         }
     }
 
@@ -144,87 +192,80 @@ class BlockState {
         _connections.removeAll { it.id == connectionId }
     }
 
-    fun startConnectionDrag(point: ConnectionPoint, blockId: String) {
+    fun startConnectionDrag(block: Block, pointType: ConnectionPointType) {
         dragState.isActive = true
-        dragState.startPoint = point
-        dragState.currentPosition = point.absolutePosition
-        dragState.sourceBlockId = blockId
+        dragState.sourceBlock = block
+        dragState.sourcePointType = pointType
+        dragState.currentPosition = block.getConnectionPointPosition(pointType)
     }
 
     fun updateDragPosition(position: Offset) {
+        // Position is already in dp
         dragState.currentPosition = position
     }
 
     fun endConnectionDrag(position: Offset) {
-        if (!dragState.isActive) return
+        if (!dragState.isActive || dragState.sourceBlock == null || dragState.sourcePointType == null) return
 
+        // Position is already in dp
+        val endPosition = position
+        
         // Find if there's a connection point near the end position
-        val nearbyPoints = _blocks.flatMap { block ->
-            block.connectionPoints.map { point ->
-                Triple(block.id, point, (point.absolutePosition - position).getDistance())
-            }
-        }.filter { (blockId, point, distance) ->
-            // Only consider points within 30 pixels and not from the same block
-            distance < 30f && blockId != dragState.sourceBlockId &&
-                    // Ensure we're connecting input to output (not input to input or output to output)
-                    ((dragState.startPoint?.type == ConnectionType.OUTPUT && point.type == ConnectionType.INPUT) ||
-                            (dragState.startPoint?.type == ConnectionType.INPUT && point.type == ConnectionType.OUTPUT))
-        }.minByOrNull { it.third }
+        val nearbyBlocks = _blocks.map { block ->
+            Pair(block, findNearestConnectionPoint(block, endPosition))
+        }.filter { (block, result) ->
+            // Only consider valid results, not from the same block, and with compatible connection types
+            result.first && block.id != dragState.sourceBlock!!.id && 
+                    result.second != dragState.sourcePointType
+        }
 
-        if (nearbyPoints != null && dragState.startPoint != null && dragState.sourceBlockId != null) {
-            val (targetBlockId, targetPoint, _) = nearbyPoints
+        if (nearbyBlocks.isNotEmpty()) {
+            val (targetBlock, _) = nearbyBlocks.minByOrNull { 
+                val (_, result) = it
+                result.third // distance
+            } ?: return
 
-            // Determine which is source and which is target based on connection type
-            val (fromBlockId, fromPointId, toBlockId, toPointId) = if (dragState.startPoint!!.type == ConnectionType.OUTPUT) {
-                Quad(dragState.sourceBlockId!!, dragState.startPoint!!.id, targetBlockId, targetPoint.id)
+            // Determine source and target based on connection point types
+            if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
+                // Source block's output to target block's input
+                addConnection(dragState.sourceBlock!!, targetBlock)
             } else {
-                Quad(targetBlockId, targetPoint.id, dragState.sourceBlockId!!, dragState.startPoint!!.id)
+                // Target block's output to source block's input
+                addConnection(targetBlock, dragState.sourceBlock!!)
             }
-
-            // Add the new connection
-            addConnection(
-                Connection(
-                    id = UUID.randomUUID().toString(),
-                    fromBlockId = fromBlockId,
-                    toBlockId = toBlockId,
-                    fromPointId = fromPointId,
-                    toPointId = toPointId
-                )
-            )
         }
 
         // Reset drag state
         dragState.isActive = false
-        dragState.startPoint = null
-        dragState.sourceBlockId = null
+        dragState.sourceBlock = null
+        dragState.sourcePointType = null
+    }
+    
+    // Helper function to find the nearest connection point on a block
+    // Returns Triple(isNearby, connectionPointType, distance)
+    private fun findNearestConnectionPoint(block: Block, position: Offset): Triple<Boolean, ConnectionPointType, Float> {
+        val inputDistance = (block.inputPosition - position).getDistance()
+        val outputDistance = (block.outputPosition - position).getDistance()
+        
+        val minDistance = minOf(inputDistance, outputDistance)
+        val nearestType = if (inputDistance < outputDistance) 
+            ConnectionPointType.INPUT else ConnectionPointType.OUTPUT
+            
+        // Distance threshold in dp
+        return Triple(minDistance < 20f, nearestType, minDistance)
     }
 }
 
-// Helper data class
-data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
-
 // Block creation helper
-fun createBlockWithConnections(
+fun createBlock(
     id: String,
     type: BlockType,
     content: String,
-    position: Offset = Offset.Zero
 ): Block {
     return Block(
         id = id,
         type = type,
-        position = position,
-        content = content,
-        connectionPoints = listOf(
-            ConnectionPoint(
-                id = "${id}_input",
-                type = ConnectionType.INPUT
-            ),
-            ConnectionPoint(
-                id = "${id}_output",
-                type = ConnectionType.OUTPUT
-            )
-        )
+        content = content
     )
 }
 
@@ -236,33 +277,32 @@ fun BlockView(
     block: Block,
     onDragEnd: (Offset) -> Unit,
     onRename: (String) -> Unit,
-    onConnectionDragStart: (ConnectionPoint, String) -> Unit,
-    onUpdateBlockSize: (String, Offset) -> Unit,
-    onUpdateConnectionPointPosition: (String, String, Offset) -> Unit
+    onConnectionDragStart: (Block, ConnectionPointType) -> Unit,
+    onUpdateBlockSize: (String, Offset) -> Unit
 ) {
     var position by remember { mutableStateOf(block.position) }
     var isEditing by remember { mutableStateOf(false) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue(block.content)) }
+    val density = LocalDensity.current.density
+    
+    // Update our local position when the block's position changes externally
+    LaunchedEffect(block.position) {
+        position = block.position
+    }
 
     Box(
         modifier = Modifier
             .offset(position.x.dp, position.y.dp)
             .onGloballyPositioned { coordinates ->
-                // Update the block size when it's positioned
+                // Update the block size in dp units
                 val size = Offset(
-                    coordinates.size.width.toFloat(),
-                    coordinates.size.height.toFloat()
+                    coordinates.size.width / density,
+                    coordinates.size.height / density
                 )
-                onUpdateBlockSize(block.id, size)
-
-                // Update the absolute positions of connection points
-                block.connectionPoints.forEach { point ->
-                    val pointPosition = when (point.type) {
-                        ConnectionType.INPUT -> Offset(0f, coordinates.size.height / 2f)
-                        ConnectionType.OUTPUT -> Offset(coordinates.size.width.toFloat(), coordinates.size.height / 2f)
-                    }
-                    val absolutePos = coordinates.positionInWindow() + pointPosition
-                    onUpdateConnectionPointPosition(block.id, point.id, absolutePos)
+                
+                // Only update size if it has changed to avoid unnecessary recompositions
+                if (block.size != size) {
+                    onUpdateBlockSize(block.id, size)
                 }
             }
     ) {
@@ -273,10 +313,9 @@ fun BlockView(
         ) {
             // Input connection point
             ConnectionPointView(
-                type = ConnectionType.INPUT,
+                type = ConnectionPointType.INPUT,
                 onConnectionStart = {
-                    val inputPoint = block.connectionPoints.find { it.type == ConnectionType.INPUT }
-                    inputPoint?.let { onConnectionDragStart(it, block.id) }
+                    onConnectionDragStart(block, ConnectionPointType.INPUT)
                 }
             )
 
@@ -307,23 +346,21 @@ fun BlockView(
                     }
                     .pointerInput(Unit) {
                         detectDragGestures(
-                            onDragEnd = { onDragEnd(position) },
+                            onDragEnd = { 
+                                onDragEnd(position) 
+                            },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                position += dragAmount
-
-                                // When dragging the block, update connection point positions
-                                block.connectionPoints.forEach { point ->
-                                    val pointPosition = when (point.type) {
-                                        ConnectionType.INPUT -> Offset(0f, block.size.y / 2f)
-                                        ConnectionType.OUTPUT -> Offset(block.size.x, block.size.y / 2f)
-                                    }
-                                    val absolutePos = Offset(
-                                        position.x + pointPosition.x,
-                                        position.y + pointPosition.y
-                                    )
-                                    onUpdateConnectionPointPosition(block.id, point.id, absolutePos)
-                                }
+                                // Update position in dp coordinates
+                                val newPosition = position + Offset(dragAmount.x / density, dragAmount.y / density)
+                                position = newPosition
+                                
+                                // Update the block position in the BlockState during drag as well
+                                // This ensures connection points are updated in real-time
+                                onDragEnd(newPosition)
+                                
+                                // For debugging only
+                                println("Dragging block ${block.content} to dp: $newPosition")
                             }
                         )
                     }
@@ -351,14 +388,14 @@ fun BlockView(
                         color = Color.White,
                         style = MaterialTheme.typography.body1
                     )
-                }            }
+                }            
+            }
 
             // Output connection point
             ConnectionPointView(
-                type = ConnectionType.OUTPUT,
+                type = ConnectionPointType.OUTPUT,
                 onConnectionStart = {
-                    val outputPoint = block.connectionPoints.find { it.type == ConnectionType.OUTPUT }
-                    outputPoint?.let { onConnectionDragStart(it, block.id) }
+                    onConnectionDragStart(block, ConnectionPointType.OUTPUT)
                 }
             )
         }
@@ -368,7 +405,7 @@ fun BlockView(
 // Connection Point View
 @Composable
 fun ConnectionPointView(
-    type: ConnectionType,
+    type: ConnectionPointType,
     onConnectionStart: () -> Unit
 ) {
     Box(
@@ -376,8 +413,8 @@ fun ConnectionPointView(
             .size(12.dp)
             .background(
                 color = when (type) {
-                    ConnectionType.INPUT -> Color.Green
-                    ConnectionType.OUTPUT -> Color.Red
+                    ConnectionPointType.INPUT -> Color.Green
+                    ConnectionPointType.OUTPUT -> Color.Red
                 },
                 shape = CircleShape
             )
@@ -389,27 +426,37 @@ fun ConnectionPointView(
 @Composable
 fun ConnectionsCanvas(
     connections: List<Connection>,
-    blocks: List<Block>,
     dragState: ConnectionDragState,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current.density
+    
     Canvas(modifier = modifier.fillMaxSize()) {
+        // Convert dp to pixels at the time of drawing
+        val dpToPx: (Offset) -> Offset = { dp -> 
+            Offset(dp.x * density, dp.y * density)
+        }
+        
         // Draw permanent connections
         connections.forEach { connection ->
-            val fromBlock = blocks.find { it.id == connection.fromBlockId }
-            val toBlock = blocks.find { it.id == connection.toBlockId }
-
-            val fromPoint = fromBlock?.connectionPoints?.find { it.id == connection.fromPointId }
-            val toPoint = toBlock?.connectionPoints?.find { it.id == connection.toPointId }
-
-            if (fromPoint != null && toPoint != null) {
-                drawConnection(fromPoint.absolutePosition, toPoint.absolutePosition)
-            }
+            val startPos = dpToPx(connection.getStartPosition())
+            val endPos = dpToPx(connection.getEndPosition())
+            drawConnection(startPos, endPos)
         }
 
         // Draw connection being dragged
-        if (dragState.isActive && dragState.startPoint != null) {
-            drawConnection(dragState.startPoint!!.absolutePosition, dragState.currentPosition)
+        if (dragState.isActive && dragState.sourceBlock != null && dragState.sourcePointType != null) {
+            val sourcePoint = dpToPx(
+                dragState.sourceBlock!!.getConnectionPointPosition(dragState.sourcePointType!!)
+            )
+            val targetPoint = dpToPx(dragState.currentPosition)
+            
+            // Draw from source to current position
+            if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
+                drawConnection(sourcePoint, targetPoint)
+            } else {
+                drawConnection(targetPoint, sourcePoint)
+            }
         }
     }
 }
@@ -498,4 +545,19 @@ fun blockItem(
             )
         }
     }
+}
+
+// Helper extension to calculate distance between points
+fun Offset.getDistance(): Float {
+    return sqrt(x * x + y * y)
+}
+
+// Add extension function to add two offsets
+operator fun Offset.plus(other: Offset): Offset {
+    return Offset(this.x + other.x, this.y + other.y)
+}
+
+// Add extension function to subtract offsets
+operator fun Offset.minus(other: Offset): Offset {
+    return Offset(this.x - other.x, this.y - other.y)
 }

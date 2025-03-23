@@ -1,4 +1,5 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -22,11 +23,13 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalDensity
 import java.util.*
 
 // Library block creation helper
 private fun createLibraryBlock(type: BlockType, content: String): Block {
-    return createBlockWithConnections(
+    return createBlock(
         id = UUID.randomUUID().toString(),
         type = type,
         content = content
@@ -38,6 +41,7 @@ private fun createLibraryBlock(type: BlockType, content: String): Block {
 fun app() {
     var selectedBlock by remember { mutableStateOf<Block?>(null) }
     var mousePosition by remember { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current.density
 
     val blockState = remember { BlockState() }
 
@@ -58,7 +62,6 @@ fun app() {
                 onBlockSelected = { block ->
                     selectedBlock = block.copy(
                         id = UUID.randomUUID().toString(),
-                        position = mousePosition
                     )
                 }
             )
@@ -78,7 +81,8 @@ fun app() {
                                 mousePosition = change.position
 
                                 if (blockState.dragState.isActive) {
-                                    blockState.updateDragPosition(change.position)
+                                    // Convert to dp
+                                    blockState.updateDragPosition(change.position.toDpOffset(density))
                                 }
                             }
                         )
@@ -296,6 +300,24 @@ fun workspaceArea(
     modifier: Modifier = Modifier,
     blockState: BlockState
 ) {
+    // State to track clicked positions for debugging
+    var clickedPosition by remember { mutableStateOf<Offset?>(null) }
+    var clickedDpPosition by remember { mutableStateOf<Offset?>(null) }
+    var hoverPosition by remember { mutableStateOf(Offset.Zero) }
+    var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
+    var selectedBlockId by remember { mutableStateOf<String?>(null) }
+    val density = LocalDensity.current.density
+
+    // Collect connection points for debugging
+    val connectionPoints = remember(blockState.blocks) {
+        blockState.blocks.flatMap { block ->
+            listOf(
+                Triple(block.id, ConnectionPointType.INPUT, block.inputPosition),
+                Triple(block.id, ConnectionPointType.OUTPUT, block.outputPosition)
+            )
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -303,25 +325,60 @@ fun workspaceArea(
             .pointerInput(Unit) {
                 detectDragGestures { change, _ ->
                     change.consume()
+                    // Update hover position
+                    hoverPosition = change.position
+                    hoverDpPosition = change.position.toDpOffset(density)
+
                     // Update the connection drag position if active
                     if (blockState.dragState.isActive) {
-                        blockState.updateDragPosition(change.position)
+                        blockState.updateDragPosition(hoverDpPosition)
                     }
                 }
             }
             .pointerInput(Unit) {
                 detectTapGestures { position ->
+                    // Record clicked position for debugging
+                    clickedPosition = position
+                    clickedDpPosition = position.toDpOffset(density)
+
+                    // Check if we clicked on a block for debugging
+                    val clickedBlockId = blockState.blocks.find { block ->
+                        // Check if the click (in dp) is within the block bounds (also in dp)
+                        val blockLeft = block.position.x
+                        val blockRight = blockLeft + block.size.x
+                        val blockTop = block.position.y
+                        val blockBottom = blockTop + block.size.y
+
+                        // Debug output to console to help diagnose the issue
+                        val dpPos = position.toDpOffset(density)
+                        println("Click at $dpPos (dp), Block ${block.content} bounds: $blockLeft,$blockTop to $blockRight,$blockBottom")
+
+                        dpPos.x in blockLeft..blockRight && dpPos.y in blockTop..blockBottom
+                    }?.id
+
+                    selectedBlockId = clickedBlockId
+
                     // When the user clicks while dragging a connection, complete it
                     if (blockState.dragState.isActive) {
-                        blockState.endConnectionDrag(position)
+                        blockState.endConnectionDrag(clickedDpPosition!!)
                     }
                 }
             }
     ) {
+        // Draw debugging grid
+        DebugGrid(
+            clickedPosition = clickedPosition,
+            clickedDpPosition = clickedDpPosition,
+            hoverPosition = hoverPosition,
+            hoverDpPosition = hoverDpPosition,
+            connectionPoints = connectionPoints,
+            blocks = blockState.blocks,
+            modifier = Modifier.fillMaxSize()
+        )
+
         // Draw connections between blocks
         ConnectionsCanvas(
             connections = blockState.connections,
-            blocks = blockState.blocks,
             dragState = blockState.dragState,
             modifier = Modifier.fillMaxSize()
         )
@@ -336,16 +393,281 @@ fun workspaceArea(
                 onRename = { newContent ->
                     blockState.updateBlockContent(block.id, newContent)
                 },
-                onConnectionDragStart = { point, blockId ->
-                    blockState.startConnectionDrag(point, blockId)
+                onConnectionDragStart = { sourceBlock, pointType ->
+                    blockState.startConnectionDrag(sourceBlock, pointType)
                 },
                 onUpdateBlockSize = { blockId, size ->
                     blockState.updateBlockSize(blockId, size)
-                },
-                onUpdateConnectionPointPosition = { blockId, pointId, position ->
-                    blockState.updateConnectionPointPosition(blockId, pointId, position)
                 }
             )
+        }
+
+        // Display clicked position info
+        clickedPosition?.let { position ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = "Clicked Pixels: (${position.x.toInt()}, ${position.y.toInt()})",
+                    color = Color.Red
+                )
+                clickedDpPosition?.let { dpPos ->
+                    Text(
+                        text = "Clicked DP: (${dpPos.x.toInt()}, ${dpPos.y.toInt()})",
+                        color = Color.Red
+                    )
+                }
+            }
+        }
+
+        // Display hover position info
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+                .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                .padding(8.dp)
+        ) {
+            Text(
+                text = "Hover Pixels: (${hoverPosition.x.toInt()}, ${hoverPosition.y.toInt()})",
+                color = Color.Blue
+            )
+            Text(
+                text = "Hover DP: (${hoverDpPosition.x.toInt()}, ${hoverDpPosition.y.toInt()})",
+                color = Color.Blue
+            )
+        }
+
+        // Display selected block debug info
+        selectedBlockId?.let { id ->
+            val block = blockState.blocks.find { it.id == id }
+            block?.let {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                        .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                        .padding(8.dp)
+                        .widthIn(max = 300.dp)
+                ) {
+                    Text("Block: ${block.content}", style = MaterialTheme.typography.subtitle1)
+                    Text("ID: ${block.id.take(8)}...", style = MaterialTheme.typography.caption)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Position (dp): (${block.position.x.toInt()}, ${block.position.y.toInt()})")
+                    Text("Size (dp): (${block.size.x.toInt()}, ${block.size.y.toInt()})")
+                    Spacer(Modifier.height(4.dp))
+                    Text("Input Point (dp): (${block.inputPosition.x.toInt()}, ${block.inputPosition.y.toInt()})")
+                    Text("Output Point (dp): (${block.outputPosition.x.toInt()}, ${block.outputPosition.y.toInt()})")
+
+                    Spacer(Modifier.height(4.dp))
+                    Text("Position in pixels:", style = MaterialTheme.typography.subtitle2)
+                    val pixelPos = block.position.toPixelOffset(density)
+                    Text("(${pixelPos.x.toInt()}, ${pixelPos.y.toInt()})")
+                }
+            }
+        }
+    }
+}
+
+// New component for drawing a debugging grid
+@Composable
+fun DebugGrid(
+    clickedPosition: Offset?,
+    clickedDpPosition: Offset?,
+    hoverPosition: Offset,
+    hoverDpPosition: Offset,
+    connectionPoints: List<Triple<String, ConnectionPointType, Offset>>,
+    blocks: List<Block>,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current.density
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+
+        // Grid spacing
+        val gridSpacing = 50f
+
+        // Draw vertical lines
+        for (x in 0..(width.toInt() / gridSpacing.toInt())) {
+            val xPos = x * gridSpacing
+            drawLine(
+                color = Color.LightGray.copy(alpha = 0.5f),
+                start = Offset(xPos, 0f),
+                end = Offset(xPos, height),
+                strokeWidth = 1f
+            )
+
+            if (x % 2 == 0) {
+                drawCircle(
+                    color = Color.Gray,
+                    radius = 2f,
+                    center = Offset(xPos, 0f)
+                )
+            }
+        }
+
+        // Draw horizontal lines
+        for (y in 0..(height.toInt() / gridSpacing.toInt())) {
+            val yPos = y * gridSpacing
+            drawLine(
+                color = Color.LightGray.copy(alpha = 0.5f),
+                start = Offset(0f, yPos),
+                end = Offset(width, yPos),
+                strokeWidth = 1f
+            )
+
+            if (y % 2 == 0) {
+                drawCircle(
+                    color = Color.Gray,
+                    radius = 2f,
+                    center = Offset(0f, yPos)
+                )
+            }
+        }
+
+        // Draw block bounds for debugging
+        for (block in blocks) {
+            // Convert dp to pixels for drawing
+            val pixelLeft = block.position.x * density
+            val pixelTop = block.position.y * density
+            val pixelWidth = block.size.x * density
+            val pixelHeight = block.size.y * density
+
+            // Draw a rectangle to show the block bounds
+            drawRect(
+                color = Color.Magenta.copy(alpha = 0.2f),
+                topLeft = Offset(pixelLeft, pixelTop),
+                size = androidx.compose.ui.geometry.Size(
+                    pixelWidth,
+                    pixelHeight
+                )
+            )
+
+            // Print debug info
+            println("Block ${block.content} - Drawing rectangle at ($pixelLeft, $pixelTop) with size ($pixelWidth, $pixelHeight)")
+            println("  Original dp pos: ${block.position.x}, ${block.position.y}")
+            println("  Multiplied by density: $density")
+        }
+
+        // Draw connection points for debugging
+        for ((blockId, type, position) in connectionPoints) {
+            val color = when (type) {
+                ConnectionPointType.INPUT -> Color.Green.copy(alpha = 0.7f)
+                ConnectionPointType.OUTPUT -> Color.Red.copy(alpha = 0.7f)
+            }
+
+            // Convert dp to pixels for drawing
+            val pixelPos = position.toPixelOffset(density)
+
+            // Draw a circle to indicate the connection point
+            val size = 6f
+            drawCircle(
+                color = color,
+                radius = size,
+                center = pixelPos
+            )
+
+            // Draw a cross inside to make it more visible
+            drawLine(
+                color = Color.Black.copy(alpha = 0.5f),
+                start = Offset(pixelPos.x - size, pixelPos.y),
+                end = Offset(pixelPos.x + size, pixelPos.y),
+                strokeWidth = 1f
+            )
+            drawLine(
+                color = Color.Black.copy(alpha = 0.5f),
+                start = Offset(pixelPos.x, pixelPos.y - size),
+                end = Offset(pixelPos.x, pixelPos.y + size),
+                strokeWidth = 1f
+            )
+        }
+
+        // Draw a crosshair at the clicked position
+        clickedPosition?.let { position ->
+            drawLine(
+                color = Color.Red,
+                start = Offset(position.x - 10, position.y),
+                end = Offset(position.x + 10, position.y),
+                strokeWidth = 2f
+            )
+            drawLine(
+                color = Color.Red,
+                start = Offset(position.x, position.y - 10),
+                end = Offset(position.x, position.y + 10),
+                strokeWidth = 2f
+            )
+
+            // Draw a circle at the clicked position
+            drawCircle(
+                color = Color.Red.copy(alpha = 0.3f),
+                radius = 10f,
+                center = position
+            )
+
+            // Also draw a circle at the dp position converted back to pixels
+            clickedDpPosition?.let { dpPos ->
+                val pixelPos = dpPos.toPixelOffset(density)
+                drawCircle(
+                    color = Color.Yellow.copy(alpha = 0.3f),
+                    radius = 10f,
+                    center = pixelPos
+                )
+            }
+        }
+        
+        // Draw a crosshair at the hover position
+        drawLine(
+            color = Color.Blue.copy(alpha = 0.5f),
+            start = Offset(hoverPosition.x - 10, hoverPosition.y),
+            end = Offset(hoverPosition.x + 10, hoverPosition.y),
+            strokeWidth = 1f
+        )
+        drawLine(
+            color = Color.Blue.copy(alpha = 0.5f),
+            start = Offset(hoverPosition.x, hoverPosition.y - 10),
+            end = Offset(hoverPosition.x, hoverPosition.y + 10),
+            strokeWidth = 1f
+        )
+    }
+    
+    // Add coordinate labels outside the Canvas
+    Box(modifier = modifier.fillMaxSize()) {
+        // Add some coordinate labels on the top edge
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            for (x in 0..10) {
+                val xPos = x * 100
+                Text(
+                    text = "$xPos",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.caption,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        
+        // Add some coordinate labels on the left edge
+        Column(
+            modifier = Modifier.fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            for (y in 0..10) {
+                val yPos = y * 50
+                Text(
+                    text = "$yPos",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.caption,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
         }
     }
 }
