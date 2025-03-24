@@ -10,10 +10,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Text
-import androidx.compose.material.TextField
-import androidx.compose.material.TextFieldDefaults
+import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +64,8 @@ data class Block(
     var content: String,
     private var _size: Offset = Offset.Zero,      // Size in dp
     var inputPosition: Offset = Offset.Zero,  // Position of the input connection point in dp
-    var outputPosition: Offset = Offset.Zero  // Position of the output connection point in dp
+    var outputPosition: Offset = Offset.Zero,  // Position of the output connection point in dp
+    val properties: MutableMap<String, String> = mutableMapOf()  // Map of property name to value
 ) {
     // Property accessors with auto-update of connection points
     var position: Offset
@@ -103,10 +104,128 @@ data class Block(
         println("Input at: $inputPosition, Output at: $outputPosition")
         println("--------------------")
     }
+    
+    // Initialize default property values from TerraformProperties
+    fun initializeDefaultProperties() {
+        val terraformProps = TerraformProperties.getPropertiesForBlock(this)
+        
+        terraformProps.forEach { prop ->
+            // Only set if not already set and has a default value
+            if (!properties.containsKey(prop.name) && prop.default != null) {
+                properties[prop.name] = prop.default
+            }
+        }
+    }
+    
+    // Set a property value
+    fun setProperty(name: String, value: String) {
+        properties[name] = value
+    }
+    
+    // Get a property value or default
+    fun getProperty(name: String): String? {
+        return properties[name]
+    }
 }
 
 enum class BlockType {
     COMPUTE, DATABASE, NETWORKING, SECURITY, INTEGRATION, MONITORING
+}
+
+/**
+ * Represents a property for a Terraform resource
+ */
+data class TerraformProperty(
+    val name: String,
+    val type: PropertyType,
+    val default: String? = null,
+    val required: Boolean = false,
+    val description: String = "",
+    val options: List<String> = emptyList() // For enum types
+)
+
+enum class PropertyType {
+    STRING, NUMBER, BOOLEAN, ENUM
+}
+
+// Map of block types to their available properties
+object TerraformProperties {
+    val blockTypeProperties = mapOf(
+        // Compute resources
+        Pair("Lambda Function", listOf(
+            TerraformProperty("function_name", PropertyType.STRING, required = true, description = "Name of the Lambda function"),
+            TerraformProperty("runtime", PropertyType.ENUM, default = "nodejs18.x", required = true, 
+                description = "Runtime environment", 
+                options = listOf("nodejs18.x", "nodejs16.x", "python3.9", "python3.8", "java11", "go1.x", "ruby2.7")),
+            TerraformProperty("memory_size", PropertyType.NUMBER, default = "128", description = "Memory allocation in MB"),
+            TerraformProperty("timeout", PropertyType.NUMBER, default = "3", description = "Function timeout in seconds"),
+            TerraformProperty("publish", PropertyType.BOOLEAN, default = "false", description = "Whether to publish a new Lambda version")
+        )),
+        Pair("EC2 Instance", listOf(
+            TerraformProperty("instance_type", PropertyType.STRING, default = "t2.micro", required = true, description = "EC2 instance type"),
+            TerraformProperty("ami", PropertyType.STRING, required = true, description = "AMI ID to use for the instance"),
+            TerraformProperty("key_name", PropertyType.STRING, description = "Key pair name for SSH access"),
+            TerraformProperty("monitoring", PropertyType.BOOLEAN, default = "false", description = "Enable detailed monitoring")
+        )),
+        
+        // Database resources
+        Pair("DynamoDB Table", listOf(
+            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the DynamoDB table"),
+            TerraformProperty("billing_mode", PropertyType.ENUM, default = "PROVISIONED", 
+                options = listOf("PROVISIONED", "PAY_PER_REQUEST"), 
+                description = "Controls how you are charged for read and write throughput"),
+            TerraformProperty("read_capacity", PropertyType.NUMBER, default = "5", description = "Read capacity units"),
+            TerraformProperty("write_capacity", PropertyType.NUMBER, default = "5", description = "Write capacity units")
+        )),
+        Pair("RDS Instance", listOf(
+            TerraformProperty("allocated_storage", PropertyType.NUMBER, default = "10", required = true, description = "Allocated storage in gigabytes"),
+            TerraformProperty("engine", PropertyType.ENUM, required = true, 
+                options = listOf("mysql", "postgres", "mariadb", "oracle-ee", "sqlserver-ee"),
+                description = "Database engine"),
+            TerraformProperty("instance_class", PropertyType.STRING, default = "db.t3.micro", required = true, description = "Database instance type"),
+            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the database"),
+            TerraformProperty("username", PropertyType.STRING, required = true, description = "Master username"),
+            TerraformProperty("password", PropertyType.STRING, required = true, description = "Master password"),
+            TerraformProperty("skip_final_snapshot", PropertyType.BOOLEAN, default = "true", description = "Skip final snapshot before deletion")
+        )),
+        Pair("S3 Bucket", listOf(
+            TerraformProperty("bucket", PropertyType.STRING, description = "Bucket name (if not specified, a random name will be used)"),
+            TerraformProperty("acl", PropertyType.ENUM, default = "private", 
+                options = listOf("private", "public-read", "public-read-write", "authenticated-read"),
+                description = "Canned ACL for the bucket"),
+            TerraformProperty("versioning_enabled", PropertyType.BOOLEAN, default = "false", description = "Enable versioning"),
+            TerraformProperty("force_destroy", PropertyType.BOOLEAN, default = "false", description = "Allow deletion of non-empty bucket")
+        )),
+        
+        // Networking resources
+        Pair("VPC", listOf(
+            TerraformProperty("cidr_block", PropertyType.STRING, required = true, default = "10.0.0.0/16", description = "CIDR block for the VPC"),
+            TerraformProperty("enable_dns_support", PropertyType.BOOLEAN, default = "true", description = "Enable DNS support"),
+            TerraformProperty("enable_dns_hostnames", PropertyType.BOOLEAN, default = "false", description = "Enable DNS hostnames")
+        )),
+        Pair("Security Group", listOf(
+            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the security group"),
+            TerraformProperty("description", PropertyType.STRING, default = "Managed by Terraform", description = "Description of the security group"),
+            TerraformProperty("vpc_id", PropertyType.STRING, required = true, description = "VPC ID")
+        )),
+        
+        // Security resources
+        Pair("IAM Role", listOf(
+            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the IAM role"),
+            TerraformProperty("description", PropertyType.STRING, description = "Description of the IAM role"),
+            TerraformProperty("assume_role_policy", PropertyType.STRING, required = true, description = "Policy that grants an entity permission to assume the role")
+        )),
+        Pair("KMS Key", listOf(
+            TerraformProperty("description", PropertyType.STRING, description = "Description of the KMS key"),
+            TerraformProperty("deletion_window_in_days", PropertyType.NUMBER, default = "10", description = "Duration in days after which the key is deleted"),
+            TerraformProperty("enable_key_rotation", PropertyType.BOOLEAN, default = "false", description = "Enable automatic key rotation")
+        ))
+    )
+    
+    // Helper method to get properties for a given block
+    fun getPropertiesForBlock(block: Block): List<TerraformProperty> {
+        return blockTypeProperties[block.content] ?: emptyList()
+    }
 }
 
 // State for tracking active connection being drawn
@@ -148,6 +267,8 @@ class BlockState {
     val dragState = ConnectionDragState()
 
     fun addBlock(block: Block) {
+        // Initialize default properties when adding a block
+        block.initializeDefaultProperties()
         _blocks.add(block)
     }
 
@@ -178,6 +299,26 @@ class BlockState {
         if (index != -1) {
             _blocks[index].content = newContent
         }
+    }
+    
+    // Update a specific property for a block
+    fun updateBlockProperty(blockId: String, propertyName: String, propertyValue: String) {
+        val index = _blocks.indexOfFirst { it.id == blockId }
+        if (index != -1) {
+            _blocks[index].setProperty(propertyName, propertyValue)
+        }
+    }
+    
+    // Get a property value for a block
+    fun getBlockProperty(blockId: String, propertyName: String): String? {
+        val block = _blocks.find { it.id == blockId } ?: return null
+        return block.getProperty(propertyName)
+    }
+    
+    // Get all properties for a block
+    fun getBlockProperties(blockId: String): Map<String, String> {
+        val block = _blocks.find { it.id == blockId } ?: return emptyMap()
+        return block.properties.toMap()
     }
 
     fun addConnection(sourceBlock: Block, targetBlock: Block) {
@@ -300,11 +441,16 @@ fun createBlock(
     type: BlockType,
     content: String,
 ): Block {
-    return Block(
+    val block = Block(
         id = id,
         type = type,
         content = content
     )
+    
+    // Initialize default properties
+    block.initializeDefaultProperties()
+    
+    return block
 }
 
 // UI Components
@@ -703,4 +849,150 @@ operator fun Offset.plus(other: Offset): Offset {
 // Add extension function to subtract offsets
 operator fun Offset.minus(other: Offset): Offset {
     return Offset(this.x - other.x, this.y - other.y)
+}
+
+// Property Editor Panel Composable
+@Composable
+fun PropertyEditorPanel(
+    block: Block,
+    onPropertyChange: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val properties = TerraformProperties.getPropertiesForBlock(block)
+    
+    Column(
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+            .padding(16.dp)
+            .widthIn(max = 320.dp)
+    ) {
+        Text(
+            text = "Edit ${block.content}",
+            style = MaterialTheme.typography.h6,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        if (properties.isEmpty()) {
+            Text("No editable properties available for this resource type.", 
+                style = MaterialTheme.typography.caption)
+        } else {
+            // For each property, create an appropriate editor based on type
+            properties.forEach { property ->
+                val currentValue = block.getProperty(property.name) ?: property.default ?: ""
+                
+                // Display property name with required indicator if needed
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${property.name}${if (property.required) " *" else ""}",
+                        style = MaterialTheme.typography.subtitle2,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    when (property.type) {
+                        PropertyType.STRING -> {
+                            var value by remember { mutableStateOf(TextFieldValue(currentValue)) }
+                            
+                            TextField(
+                                value = value,
+                                onValueChange = { 
+                                    value = it
+                                    onPropertyChange(property.name, it.text)
+                                },
+                                label = { Text(property.description) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.body2
+                            )
+                        }
+                        
+                        PropertyType.NUMBER -> {
+                            var value by remember { mutableStateOf(TextFieldValue(currentValue)) }
+                            
+                            TextField(
+                                value = value,
+                                onValueChange = { newValue ->
+                                    // Only allow numbers
+                                    if (newValue.text.isEmpty() || newValue.text.all { it.isDigit() || it == '.' }) {
+                                        value = newValue
+                                        onPropertyChange(property.name, newValue.text)
+                                    }
+                                },
+                                label = { Text(property.description) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.body2
+                            )
+                        }
+                        
+                        PropertyType.BOOLEAN -> {
+                            var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
+                            
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { 
+                                        checked = it
+                                        onPropertyChange(property.name, it.toString())
+                                    }
+                                )
+                                Text(
+                                    text = property.description,
+                                    style = MaterialTheme.typography.body2,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
+                        
+                        PropertyType.ENUM -> {
+                            var expanded by remember { mutableStateOf(false) }
+                            var selectedOption by remember { mutableStateOf(currentValue) }
+                            
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                TextField(
+                                    value = TextFieldValue(selectedOption),
+                                    onValueChange = { },
+                                    label = { Text(property.description) },
+                                    readOnly = true,
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = if (expanded) "Collapse" else "Expand"
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { expanded = true }
+                                )
+                                
+                                DropdownMenu(
+                                    expanded = expanded,
+                                    onDismissRequest = { expanded = false },
+                                ) {
+                                    property.options.forEach { option ->
+                                        DropdownMenuItem(
+                                            onClick = {
+                                                selectedOption = option
+                                                expanded = false
+                                                onPropertyChange(property.name, option)
+                                            }
+                                        ) {
+                                            Text(text = option)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
 }

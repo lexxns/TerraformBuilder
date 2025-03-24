@@ -5,8 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Text
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -25,6 +24,7 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.TextFieldValue
 import java.util.*
 
 // Library block creation helper
@@ -54,7 +54,7 @@ fun app() {
             createBlock(
                 id = "block1",
                 type = BlockType.COMPUTE,
-                content = "Compute Instance"
+                content = "Lambda Function"
             ).apply { position = Offset(100f, 100f) }
         )
         
@@ -62,7 +62,7 @@ fun app() {
             createBlock(
                 id = "block2",
                 type = BlockType.DATABASE,
-                content = "Database"
+                content = "S3 Bucket"
             ).apply { position = Offset(400f, 200f) }
         )
         
@@ -399,7 +399,8 @@ fun workspaceArea(
                     clickedPosition = position
                     clickedDpPosition = position.toDpOffset(density)
 
-                    // Check if we clicked on a block for debugging
+                    // Check if we clicked on a block for property editing
+                    val dpPos = position.toDpOffset(density)
                     val clickedBlockId = blockState.blocks.find { block ->
                         // Check if the click (in dp) is within the block bounds (also in dp)
                         val blockLeft = block.position.x
@@ -407,17 +408,17 @@ fun workspaceArea(
                         val blockTop = block.position.y
                         val blockBottom = blockTop + block.size.y
 
-                        // Debug output to console to help diagnose the issue
-                        val dpPos = position.toDpOffset(density)
-                        println("Click at $dpPos (dp), Block ${block.content} bounds: $blockLeft,$blockTop to $blockRight,$blockBottom")
-
                         dpPos.x in blockLeft..blockRight && dpPos.y in blockTop..blockBottom
                     }?.id
-
+                    
+                    // Update selected block (null if clicked on empty space)
                     selectedBlockId = clickedBlockId
+                    
+                    println("Workspace click: ${if (clickedBlockId != null) "Selected block $clickedBlockId" else "Deselected block"}")
                 }
             }
     ) {
+        /* Uncomment for debugging
         // Draw debugging grid
         DebugGrid(
             clickedPosition = clickedPosition,
@@ -428,6 +429,7 @@ fun workspaceArea(
             blocks = blockState.blocks,
             modifier = Modifier.fillMaxSize()
         )
+        */
 
         // Draw connections between blocks
         ConnectionsCanvas(
@@ -454,72 +456,20 @@ fun workspaceArea(
             )
         }
 
-        // Display clicked position info
-        clickedPosition?.let { position ->
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = "Clicked Pixels: (${position.x.toInt()}, ${position.y.toInt()})",
-                    color = Color.Red
-                )
-                clickedDpPosition?.let { dpPos ->
-                    Text(
-                        text = "Clicked DP: (${dpPos.x.toInt()}, ${dpPos.y.toInt()})",
-                        color = Color.Red
-                    )
-                }
-            }
-        }
-
-        // Display hover position info
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp)
-                .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                .padding(8.dp)
-        ) {
-            Text(
-                text = "Hover Pixels: (${hoverPosition.x.toInt()}, ${hoverPosition.y.toInt()})",
-                color = Color.Blue
-            )
-            Text(
-                text = "Hover DP: (${hoverDpPosition.x.toInt()}, ${hoverDpPosition.y.toInt()})",
-                color = Color.Blue
-            )
-        }
-
-        // Display selected block debug info
+        // Display property editor for selected block
         selectedBlockId?.let { id ->
             val block = blockState.blocks.find { it.id == id }
             block?.let {
-                Column(
+                // Property editor panel
+                PropertyEditorPanel(
+                    block = block,
+                    onPropertyChange = { propertyName, propertyValue ->
+                        blockState.updateBlockProperty(id, propertyName, propertyValue)
+                    },
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.CenterEnd)
                         .padding(16.dp)
-                        .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
-                        .padding(8.dp)
-                        .widthIn(max = 300.dp)
-                ) {
-                    Text("Block: ${block.content}", style = MaterialTheme.typography.subtitle1)
-                    Text("ID: ${block.id.take(8)}...", style = MaterialTheme.typography.caption)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Position (dp): (${block.position.x.toInt()}, ${block.position.y.toInt()})")
-                    Text("Size (dp): (${block.size.x.toInt()}, ${block.size.y.toInt()})")
-                    Spacer(Modifier.height(4.dp))
-                    Text("Input Point (dp): (${block.inputPosition.x.toInt()}, ${block.inputPosition.y.toInt()})")
-                    Text("Output Point (dp): (${block.outputPosition.x.toInt()}, ${block.outputPosition.y.toInt()})")
-
-                    Spacer(Modifier.height(4.dp))
-                    Text("Position in pixels:", style = MaterialTheme.typography.subtitle2)
-                    val pixelPos = block.position.toPixelOffset(density)
-                    Text("(${pixelPos.x.toInt()}, ${pixelPos.y.toInt()})")
-                }
+                )
             }
         }
     }
