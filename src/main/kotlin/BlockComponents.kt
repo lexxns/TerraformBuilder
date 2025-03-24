@@ -526,6 +526,7 @@ fun blockView(
                         onValueChange = {
                             println("BLOCK-EDIT: Text changed to: ${it.text}")
                             textFieldValue = it
+                            onRename(it.text)
                         },
                         modifier = Modifier
                             .wrapContentWidth()
@@ -545,7 +546,7 @@ fun blockView(
                                         // Real focus loss - exit edit mode
                                         println("BLOCK-FOCUS: Real focus loss, exiting edit mode")
                                         isEditing = false
-                                        onRename(textFieldValue.text)
+                                        // No need to call onRename here since we already update in real-time
                                     }
                                 }
                             },
@@ -557,7 +558,7 @@ fun blockView(
                             onDone = {
                                 println("BLOCK-EDIT: Done pressed, exiting edit mode")
                                 isEditing = false
-                                onRename(textFieldValue.text)
+                                // No need to call onRename again
                                 focusManager.clearFocus()
                             }
                         )
@@ -855,9 +856,12 @@ fun propertyEditorPanel(
     onPropertyChange: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    println("PROPERTY-PANEL: Showing properties for block ${block.id} with content '${block.content}'")
+    
+    val blockContent = block.content
+    
     val properties = TerraformProperties.getPropertiesForBlock(block)
     
-    // Key for resetting internal state when block changes
     val blockKey = remember(block.id) { block.id }
     
     Card(
@@ -896,14 +900,14 @@ fun propertyEditorPanel(
                 Spacer(modifier = Modifier.width(12.dp))
                 
                 Text(
-                    text = "${block.content} properties",
+                    text = "$blockContent properties",
                     style = MaterialTheme.typography.h6
                 )
             }
             
             if (properties.isEmpty()) {
                 Text(
-                    text = "No properties available for ${block.content}.",
+                    text = "No properties available for $blockContent.",
                     style = MaterialTheme.typography.body2
                 )
             } else {

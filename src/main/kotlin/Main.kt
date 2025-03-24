@@ -404,6 +404,9 @@ fun workspaceArea(
     var selectedBlockId by remember { mutableStateOf<String?>(null) }
     val density = LocalDensity.current.density
 
+    // Force recomposition when any block content changes
+    val blockContentVersion = remember { mutableStateOf(0) }
+    
     // Collect connection points for debugging
     val connectionPoints = remember(blockState.blocks) {
         blockState.blocks.flatMap { block ->
@@ -472,7 +475,10 @@ fun workspaceArea(
                     blockState.updateBlockPosition(block.id, newPosition)
                 },
                 onRename = { newContent ->
+                    println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
                     blockState.updateBlockContent(block.id, newContent)
+                    blockContentVersion.value++
+                    println("WORKSPACE: Incremented block content version to ${blockContentVersion.value}")
                 },
                 onConnectionDragStart = onConnectionDragStart,
                 onUpdateBlockSize = { blockId, size ->
@@ -487,19 +493,22 @@ fun workspaceArea(
 
         // Display property editor for selected block
         selectedBlockId?.let { id ->
-            val block = blockState.blocks.find { it.id == id }
-            block?.let {
-                // Property editor panel
-                propertyEditorPanel(
-                    block = block,
-                    onPropertyChange = { propertyName, propertyValue ->
-                        blockState.updateBlockProperty(id, propertyName, propertyValue)
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState())
-                )
+            key(id, blockContentVersion.value) {
+                println("WORKSPACE: Rendering property panel for block $id with version ${blockContentVersion.value}")
+                val block = blockState.blocks.find { it.id == id }
+                block?.let {
+                    // Property editor panel
+                    propertyEditorPanel(
+                        block = block,
+                        onPropertyChange = { propertyName, propertyValue ->
+                            blockState.updateBlockProperty(id, propertyName, propertyValue)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
             }
         }
     }
