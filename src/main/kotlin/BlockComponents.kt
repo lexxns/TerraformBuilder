@@ -83,7 +83,7 @@ data class Block(
     }
     
     // Updates the connection point positions based on the block's position and size
-    fun updateConnectionPoints() {
+    private fun updateConnectionPoints() {
         // Calculate connection points directly in dp
         // For input: center of left edge
         inputPosition = _position + Offset(0f, _size.y / 2f)
@@ -138,8 +138,8 @@ data class Connection(
     val sourceBlock: Block,
     val targetBlock: Block
 ) {
-    val sourcePointType = ConnectionPointType.OUTPUT
-    val targetPointType = ConnectionPointType.INPUT
+    private val sourcePointType = ConnectionPointType.OUTPUT
+    private val targetPointType = ConnectionPointType.INPUT
     
     // Get start point position (source block's output) in dp
     fun getStartPosition(): Offset {
@@ -217,7 +217,7 @@ class BlockState {
         return block.properties.toMap()
     }
 
-    fun addConnection(sourceBlock: Block, targetBlock: Block) {
+    private fun addConnection(sourceBlock: Block, targetBlock: Block) {
         // Check if connection already exists
         val exists = _connections.any {
             it.sourceBlock.id == sourceBlock.id && it.targetBlock.id == targetBlock.id
@@ -353,9 +353,8 @@ fun createBlock(
 
 // UI Components
 
-// Block View Component
 @Composable
-fun BlockView(
+fun blockView(
     block: Block,
     onDragEnd: (Offset) -> Unit,
     onRename: (String) -> Unit,
@@ -394,7 +393,7 @@ fun BlockView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Input connection point
-            ConnectionPointView(
+            connectionPointView(
                 type = ConnectionPointType.INPUT,
                 onConnectionStart = {
                     println("BLOCK: Starting INPUT connection for block ${block.content}")
@@ -472,7 +471,7 @@ fun BlockView(
             }
 
             // Output connection point
-            ConnectionPointView(
+            connectionPointView(
                 type = ConnectionPointType.OUTPUT,
                 onConnectionStart = {
                     println("BLOCK: Starting OUTPUT connection for block ${block.content}")
@@ -483,9 +482,8 @@ fun BlockView(
     }
 }
 
-// Connection Point View
 @Composable
-fun ConnectionPointView(
+fun connectionPointView(
     type: ConnectionPointType,
     onConnectionStart: () -> Unit
 ) {
@@ -549,9 +547,8 @@ fun ConnectionPointView(
     )
 }
 
-// Connections Canvas
 @Composable
-fun ConnectionsCanvas(
+fun connectionCanvas(
     connections: List<Connection>,
     dragState: ConnectionDragState,
     blocks: List<Block>,
@@ -751,7 +748,7 @@ operator fun Offset.minus(other: Offset): Offset {
 
 // Property Editor Panel Composable
 @Composable
-fun PropertyEditorPanel(
+fun propertyEditorPanel(
     block: Block,
     onPropertyChange: (String, String) -> Unit,
     modifier: Modifier = Modifier

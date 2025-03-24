@@ -1,7 +1,6 @@
 package terraformbuilder
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -458,7 +457,7 @@ fun workspaceArea(
         */
 
         // Draw connections between blocks
-        ConnectionsCanvas(
+        connectionCanvas(
             connections = blockState.connections,
             dragState = blockState.dragState,
             blocks = blockState.blocks,
@@ -467,7 +466,7 @@ fun workspaceArea(
 
         // Draw blocks
         for (block in blockState.blocks) {
-            BlockView(
+            blockView(
                 block = block,
                 onDragEnd = { newPosition ->
                     blockState.updateBlockPosition(block.id, newPosition)
@@ -487,7 +486,7 @@ fun workspaceArea(
             val block = blockState.blocks.find { it.id == id }
             block?.let {
                 // Property editor panel
-                PropertyEditorPanel(
+                propertyEditorPanel(
                     block = block,
                     onPropertyChange = { propertyName, propertyValue ->
                         blockState.updateBlockProperty(id, propertyName, propertyValue)
