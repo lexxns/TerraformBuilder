@@ -401,7 +401,8 @@ fun workspaceArea(
     // State to track clicked positions for debugging
     var clickedPosition by remember { mutableStateOf<Offset?>(null) }
     var clickedDpPosition by remember { mutableStateOf<Offset?>(null) }
-    var selectedBlockId by remember { mutableStateOf<String?>(null) }
+    var selectedBlockId by remember { mutableStateOf<String?>(null) }    
+    var hoveredBlockId by remember { mutableStateOf<String?>(null) }
     val density = LocalDensity.current.density
 
     // Force recomposition when any block content changes
@@ -414,6 +415,24 @@ fun workspaceArea(
                 Triple(block.id, ConnectionPointType.INPUT, block.inputPosition),
                 Triple(block.id, ConnectionPointType.OUTPUT, block.outputPosition)
             )
+        }
+    }
+    
+    // Check if mouse is hovering over any block (recalculate when mouse moves)
+    LaunchedEffect(hoverDpPosition) {
+        val newHoveredBlockId = blockState.blocks.find { block ->
+            // Check if the hover position (in dp) is within the block bounds (also in dp)
+            val blockLeft = block.position.x
+            val blockRight = blockLeft + block.size.x
+            val blockTop = block.position.y
+            val blockBottom = blockTop + block.size.y
+
+            hoverDpPosition.x in blockLeft..blockRight && hoverDpPosition.y in blockTop..blockBottom
+        }?.id
+        
+        // Only update if changed to avoid unnecessary recompositions
+        if (hoveredBlockId != newHoveredBlockId) {
+            hoveredBlockId = newHoveredBlockId
         }
     }
 
@@ -487,7 +506,11 @@ fun workspaceArea(
                 onBlockSelected = { blockId -> 
                     selectedBlockId = blockId
                     println("Block selected through click: $blockId")
-                }
+                },
+                // Pass hover state to block
+                isHovered = hoveredBlockId == block.id,
+                // Pass the active drag state to determine connection point visibility
+                activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
             )
         }
 

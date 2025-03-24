@@ -44,7 +44,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 enum class ConnectionPointType {
@@ -56,10 +55,6 @@ enum class ConnectionPointType {
  */
 fun Offset.toDpOffset(density: Float): Offset {
     return Offset(x / density, y / density)
-}
-
-fun Offset.toPixelOffset(density: Float): Offset {
-    return Offset(x * density, y * density)
 }
 
 data class Block(
@@ -98,12 +93,13 @@ data class Block(
     
     // Updates the connection point positions based on the block's position and size
     private fun updateConnectionPoints() {
-        // Calculate connection points directly in dp
-        // For input: center of left edge
-        inputPosition = _position + Offset(0f, _size.y / 2f)
+        // For input: left edge, vertically centered
+        // We position it slightly to the left (by -2dp) to make the half-circle appear attached to the block
+        inputPosition = _position + Offset(-2f, _size.y / 2f)
         
-        // For output: center of right edge
-        outputPosition = _position + Offset(_size.x, _size.y / 2f)
+        // For output: right edge, vertically centered
+        // Position it at the right edge to make the half-circle appear attached to the block
+        outputPosition = _position + Offset(_size.x + 2f, _size.y / 2f)
         
         // Print debug info
         println("Block $content position: $_position, size: $_size")
@@ -374,7 +370,9 @@ fun blockView(
     onRename: (String) -> Unit,
     onConnectionDragStart: (Block, ConnectionPointType) -> Unit,
     onUpdateBlockSize: (String, Offset) -> Unit,
-    onBlockSelected: (String) -> Unit = {}
+    onBlockSelected: (String) -> Unit = {},
+    isHovered: Boolean = false, 
+    activeDragState: ConnectionDragState? = null
 ) {
     var position by remember { mutableStateOf(block.position) }
     var isEditing by remember { mutableStateOf(false) }
@@ -419,6 +417,19 @@ fun blockView(
         }
     }
 
+    // Determine if connection points should be shown
+    val showConnectionPoints = isHovered || 
+        (activeDragState != null && activeDragState.isActive && activeDragState.sourceBlock?.id != block.id)
+        
+    // If there's an active drag, determine which points to show
+    val showInputPoint = showConnectionPoints && 
+        (activeDragState == null || !activeDragState.isActive || 
+         activeDragState.sourcePointType == ConnectionPointType.OUTPUT)
+         
+    val showOutputPoint = showConnectionPoints && 
+        (activeDragState == null || !activeDragState.isActive || 
+         activeDragState.sourcePointType == ConnectionPointType.INPUT)
+
     // The outermost Box that positions the block and handles size updates
     Box(
         modifier = Modifier
@@ -435,152 +446,163 @@ fun blockView(
                 }
             }
     ) {
-        // The entire content row containing connection points and the block content
-        Row(
-            modifier = Modifier.padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Input connection point
-            connectionPointView(
-                type = ConnectionPointType.INPUT,
-                onConnectionStart = {
-                    println("BLOCK: Starting INPUT connection for block ${block.content}")
-                    onConnectionDragStart(block, ConnectionPointType.INPUT)
-                }
-            )
-
-            // Block content Box - main clickable area
+        // Use a fixed stack order with zIndex to ensure proper layering
+        
+        // First, draw both connection points if needed (they should appear behind the block)
+        if (showInputPoint) {
             Box(
                 modifier = Modifier
-                    .background(
-                        color = when (block.type) {
-                            BlockType.COMPUTE -> Color(0xFF4C97FF)
-                            BlockType.DATABASE -> Color(0xFFFFAB19)
-                            BlockType.NETWORKING -> Color(0xFFFF8C1A)
-                            BlockType.SECURITY -> Color(0xFF40BF4A)
-                            BlockType.INTEGRATION -> Color(0xFF4C97FF)
-                            BlockType.MONITORING -> Color(0xFFFFAB19)
-                        },
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    .border(
-                        width = 2.dp,
-                        color = Color.Black,
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    .padding(8.dp)
-                    // Handle clicks directly at the block level
-                    .pointerInput("tap-detection") {
-                        detectTapGestures(
-                            onTap = { 
-                                // Only process single-click if not editing and not right after double-click
-                                if (!isEditing && !isDoubleClickJustTriggered) {
-                                    println("BLOCK-CLICK: Selected block ${block.id}")
-                                    onBlockSelected(block.id)
-                                }
-                            },
-                            onDoubleTap = {
-                                println("BLOCK-DOUBLE-CLICK: Setting editing mode for ${block.id}")
-                                // Mark as double-click triggered to prevent single-click firing
-                                isDoubleClickJustTriggered = true
-                                // Set flag to ignore the initial focus loss that might happen
-                                ignoreFocusLoss = true
-                                // Enter edit mode
-                                isEditing = true
-                                textFieldValue = TextFieldValue(block.content)
-                            }
-                        )
-                    }
-                    // Separate pointer input for drag
-                    .pointerInput("drag") {
-                        detectDragGestures(
-                            onDragStart = {
-                                println("BLOCK-DRAG-START: Started dragging block ${block.id}")
-                                // Cancel editing if dragging starts
-                                if (isEditing) {
-                                    isEditing = false
-                                    onRename(textFieldValue.text)
-                                }
-                            },
-                            onDragEnd = { 
-                                println("BLOCK-DRAG-END: Ended dragging block ${block.id}")
-                                onDragEnd(position) 
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                // Update position in dp coordinates
-                                val newPosition = position + Offset(dragAmount.x / density, dragAmount.y / density)
-                                position = newPosition
-                                onDragEnd(newPosition)
-                            }
-                        )
-                    }
+                    .offset((-8).dp, 0.dp)
+                    .align(Alignment.CenterStart)
+                    .zIndex(0f) // Lower z-index ensures it appears behind the block
             ) {
-                println("BLOCK-RENDER: Block ${block.id} isEditing=$isEditing ignoreFocusLoss=$ignoreFocusLoss")
-                
-                if (isEditing) {
-                    // Simple BasicTextField with simpler focus handling
-                    BasicTextField(
-                        value = textFieldValue,
-                        onValueChange = {
-                            println("BLOCK-EDIT: Text changed to: ${it.text}")
-                            textFieldValue = it
-                            onRename(it.text)
-                        },
-                        modifier = Modifier
-                            .wrapContentWidth()
-                            .focusRequester(focusRequester)
-                            .zIndex(100f)
-                            .onFocusChanged { focusState ->
-                                println("BLOCK-FOCUS: Focus state changed to: ${focusState.isFocused}, ignoreFocusLoss=$ignoreFocusLoss")
-                                
-                                if (!focusState.isFocused && isEditing) {
-                                    if (ignoreFocusLoss) {
-                                        // First focus loss after starting edit - ignore it
-                                        println("BLOCK-FOCUS: Ignoring initial focus loss")
-                                        ignoreFocusLoss = false
-                                        // Request focus again
-                                        focusRequester.requestFocus()
-                                    } else {
-                                        // Real focus loss - exit edit mode
-                                        println("BLOCK-FOCUS: Real focus loss, exiting edit mode")
-                                        isEditing = false
-                                        // No need to call onRename here since we already update in real-time
-                                    }
-                                }
-                            },
-                        textStyle = TextStyle(color = Color.White),
-                        cursorBrush = SolidColor(Color.White),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                println("BLOCK-EDIT: Done pressed, exiting edit mode")
-                                isEditing = false
-                                // No need to call onRename again
-                                focusManager.clearFocus()
-                            }
-                        )
-                    )
-                } else {
-                    // Regular text display - no need for click handlers here
-                    Text(
-                        text = block.content,
-                        color = Color.White,
-                        style = MaterialTheme.typography.body1
-                    )
-                }
+                connectionPointView(
+                    type = ConnectionPointType.INPUT,
+                    onConnectionStart = {
+                        println("BLOCK: Starting INPUT connection for block ${block.content}")
+                        onConnectionDragStart(block, ConnectionPointType.INPUT)
+                    }
+                )
             }
+        }
+        
+        if (showOutputPoint) {
+            Box(
+                modifier = Modifier
+                    .offset(8.dp, 0.dp)
+                    .align(Alignment.CenterEnd)
+                    .zIndex(0f) // Same lower z-index as input point
+            ) {
+                connectionPointView(
+                    type = ConnectionPointType.OUTPUT,
+                    onConnectionStart = {
+                        println("BLOCK: Starting OUTPUT connection for block ${block.content}")
+                        onConnectionDragStart(block, ConnectionPointType.OUTPUT)
+                    }
+                )
+            }
+        }
 
-            // Output connection point
-            connectionPointView(
-                type = ConnectionPointType.OUTPUT,
-                onConnectionStart = {
-                    println("BLOCK: Starting OUTPUT connection for block ${block.content}")
-                    onConnectionDragStart(block, ConnectionPointType.OUTPUT)
+        Box(
+            modifier = Modifier
+                .zIndex(1f) // Higher z-index ensures block appears above connection points
+                .background(
+                    color = when (block.type) {
+                        BlockType.COMPUTE -> Color(0xFF4C97FF)
+                        BlockType.DATABASE -> Color(0xFFFFAB19)
+                        BlockType.NETWORKING -> Color(0xFFFF8C1A)
+                        BlockType.SECURITY -> Color(0xFF40BF4A)
+                        BlockType.INTEGRATION -> Color(0xFF4C97FF)
+                        BlockType.MONITORING -> Color(0xFFFFAB19)
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .border(
+                    width = 2.dp,
+                    color = Color.Black,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(8.dp)
+                // Handle clicks directly at the block level
+                .pointerInput("tap-detection") {
+                    detectTapGestures(
+                        onTap = { 
+                            // Only process single-click if not editing and not right after double-click
+                            if (!isEditing && !isDoubleClickJustTriggered) {
+                                println("BLOCK-CLICK: Selected block ${block.id}")
+                                onBlockSelected(block.id)
+                            }
+                        },
+                        onDoubleTap = {
+                            println("BLOCK-DOUBLE-CLICK: Setting editing mode for ${block.id}")
+                            // Mark as double-click triggered to prevent single-click firing
+                            isDoubleClickJustTriggered = true
+                            // Set flag to ignore the initial focus loss that might happen
+                            ignoreFocusLoss = true
+                            // Enter edit mode
+                            isEditing = true
+                            textFieldValue = TextFieldValue(block.content)
+                        }
+                    )
                 }
-            )
+                // Separate pointer input for drag
+                .pointerInput("drag") {
+                    detectDragGestures(
+                        onDragStart = {
+                            println("BLOCK-DRAG-START: Started dragging block ${block.id}")
+                            // Cancel editing if dragging starts
+                            if (isEditing) {
+                                isEditing = false
+                                onRename(textFieldValue.text)
+                            }
+                        },
+                        onDragEnd = { 
+                            println("BLOCK-DRAG-END: Ended dragging block ${block.id}")
+                            onDragEnd(position) 
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            // Update position in dp coordinates
+                            val newPosition = position + Offset(dragAmount.x / density, dragAmount.y / density)
+                            position = newPosition
+                            onDragEnd(newPosition)
+                        }
+                    )
+                }
+        ) {
+            // Block content
+            if (isEditing) {
+                // Simple BasicTextField with simpler focus handling
+                BasicTextField(
+                    value = textFieldValue,
+                    onValueChange = {
+                        println("BLOCK-EDIT: Text changed to: ${it.text}")
+                        textFieldValue = it
+                        onRename(it.text)
+                    },
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .focusRequester(focusRequester)
+                        .zIndex(100f)
+                        .onFocusChanged { focusState ->
+                            println("BLOCK-FOCUS: Focus state changed to: ${focusState.isFocused}, ignoreFocusLoss=$ignoreFocusLoss")
+                            
+                            if (!focusState.isFocused && isEditing) {
+                                if (ignoreFocusLoss) {
+                                    // First focus loss after starting edit - ignore it
+                                    println("BLOCK-FOCUS: Ignoring initial focus loss")
+                                    ignoreFocusLoss = false
+                                    // Request focus again
+                                    focusRequester.requestFocus()
+                                } else {
+                                    // Real focus loss - exit edit mode
+                                    println("BLOCK-FOCUS: Real focus loss, exiting edit mode")
+                                    isEditing = false
+                                    // No need to call onRename here since we already update in real-time
+                                }
+                            }
+                        },
+                    textStyle = TextStyle(color = Color.White),
+                    cursorBrush = SolidColor(Color.White),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            println("BLOCK-EDIT: Done pressed, exiting edit mode")
+                            isEditing = false
+                            // No need to call onRename again
+                            focusManager.clearFocus()
+                        }
+                    )
+                )
+            } else {
+                // Regular text display - no need for click handlers here
+                Text(
+                    text = block.content,
+                    color = Color.White,
+                    style = MaterialTheme.typography.body1
+                )
+            }
         }
     }
 }
@@ -593,20 +615,31 @@ fun connectionPointView(
     var isHovered by remember { mutableStateOf(false) }
     var isPressed by remember { mutableStateOf(false) } 
     
+    // Use a half-circle design attached to the node
     Box(
         modifier = Modifier
-            .size(20.dp) // Larger size for easier interaction
+            .size(16.dp, 24.dp) // Reduced width, slightly taller for better touch area
             .background(
                 color = when (type) {
                     ConnectionPointType.INPUT -> if (isPressed) Color.Green else if (isHovered) Color.Green.copy(alpha = 0.9f) else Color.Green.copy(alpha = 0.7f)
                     ConnectionPointType.OUTPUT -> if (isPressed) Color.Red else if (isHovered) Color.Red.copy(alpha = 0.9f) else Color.Red.copy(alpha = 0.7f)
                 },
-                shape = CircleShape
+                shape = when (type) {
+                    // Half circle for input (flat side on right)
+                    ConnectionPointType.INPUT -> RoundedCornerShape(topStart = 50f, bottomStart = 50f, topEnd = 0f, bottomEnd = 0f)
+                    // Half circle for output (flat side on left)
+                    ConnectionPointType.OUTPUT -> RoundedCornerShape(topStart = 0f, bottomStart = 0f, topEnd = 50f, bottomEnd = 50f)
+                }
             )
             .border(
-                width = if (isPressed || isHovered) 3.dp else 2.dp,
+                width = if (isPressed || isHovered) 2.dp else 1.dp,
                 color = Color.Black,
-                shape = CircleShape
+                shape = when (type) {
+                    // Half circle for input (flat side on right)
+                    ConnectionPointType.INPUT -> RoundedCornerShape(topStart = 50f, bottomStart = 50f, topEnd = 0f, bottomEnd = 0f)
+                    // Half circle for output (flat side on left)
+                    ConnectionPointType.OUTPUT -> RoundedCornerShape(topStart = 0f, bottomStart = 0f, topEnd = 50f, bottomEnd = 50f)
+                }
             )
             // Support both click and drag with consistent visual feedback
             .pointerInput(Unit) {
