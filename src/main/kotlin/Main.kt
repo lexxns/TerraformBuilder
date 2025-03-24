@@ -1,3 +1,5 @@
+package terraformbuilder
+
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,20 +24,27 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import java.util.*
 
 // Library block creation helper
-private fun createLibraryBlock(type: BlockType, content: String): Block {
+private fun createLibraryBlock(type: BlockType, content: String, resourceType: ResourceType): Block {
     return createBlock(
         id = UUID.randomUUID().toString(),
         type = type,
-        content = content
+        content = content,
+        resourceType = resourceType
     )
+}
+
+// Generate default names for resources
+private fun generateDefaultName(resourceType: ResourceType): String {
+    val randomId = UUID.randomUUID().toString().substring(0, 4)
+
+    val prefix = resourceType.displayName.lowercase(Locale.getDefault()).replace(" ", "-")
+    return "$prefix-$randomId"
 }
 
 @Composable
@@ -56,7 +65,8 @@ fun app() {
             createBlock(
                 id = "block1",
                 type = BlockType.COMPUTE,
-                content = "Lambda Function"
+                content = "lambda-demo",
+                resourceType = ResourceType.LAMBDA_FUNCTION
             ).apply { 
                 position = Offset(100f, 100f)
                 setProperty("function_name", "my-lambda-function")
@@ -69,7 +79,8 @@ fun app() {
             createBlock(
                 id = "block2",
                 type = BlockType.DATABASE,
-                content = "S3 Bucket"
+                content = "bucket-storage",
+                resourceType = ResourceType.S3_BUCKET
             ).apply { 
                 position = Offset(400f, 200f) 
                 setProperty("bucket", "my-terraform-bucket")
@@ -109,8 +120,12 @@ fun app() {
                     .background(Color.LightGray)
                     .padding(8.dp),
                 onBlockSelected = { block ->
+                    // Create a copy with a unique ID and a default name based on the resource type
+                    val resourceType = block.resourceType
                     selectedBlock = block.copy(
                         id = UUID.randomUUID().toString(),
+                        content = generateDefaultName(resourceType),
+                        resourceType = resourceType
                     )
                 }
             )
@@ -215,10 +230,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.COMPUTE, "Lambda Function"),
-                    createLibraryBlock(BlockType.COMPUTE, "EC2 Instance"),
-                    createLibraryBlock(BlockType.COMPUTE, "ECS Cluster"),
-                    createLibraryBlock(BlockType.COMPUTE, "ECS Service")
+                    createLibraryBlock(BlockType.COMPUTE, "Lambda Function", ResourceType.LAMBDA_FUNCTION),
+                    createLibraryBlock(BlockType.COMPUTE, "EC2 Instance", ResourceType.EC2_INSTANCE),
+                    createLibraryBlock(BlockType.COMPUTE, "ECS Cluster", ResourceType.ECS_CLUSTER),
+                    createLibraryBlock(BlockType.COMPUTE, "ECS Service", ResourceType.ECS_SERVICE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -237,10 +252,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.DATABASE, "DynamoDB Table"),
-                    createLibraryBlock(BlockType.DATABASE, "RDS Instance"),
-                    createLibraryBlock(BlockType.DATABASE, "S3 Bucket"),
-                    createLibraryBlock(BlockType.DATABASE, "ElastiCache")
+                    createLibraryBlock(BlockType.DATABASE, "DynamoDB Table", ResourceType.DYNAMODB_TABLE),
+                    createLibraryBlock(BlockType.DATABASE, "RDS Instance", ResourceType.RDS_INSTANCE),
+                    createLibraryBlock(BlockType.DATABASE, "S3 Bucket", ResourceType.S3_BUCKET),
+                    createLibraryBlock(BlockType.DATABASE, "ElastiCache", ResourceType.ELASTICACHE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -259,10 +274,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.NETWORKING, "VPC"),
-                    createLibraryBlock(BlockType.NETWORKING, "Subnet"),
-                    createLibraryBlock(BlockType.NETWORKING, "Security Group"),
-                    createLibraryBlock(BlockType.NETWORKING, "Route Table")
+                    createLibraryBlock(BlockType.NETWORKING, "VPC", ResourceType.VPC),
+                    createLibraryBlock(BlockType.NETWORKING, "Subnet", ResourceType.SUBNET),
+                    createLibraryBlock(BlockType.NETWORKING, "Security Group", ResourceType.SECURITY_GROUP),
+                    createLibraryBlock(BlockType.NETWORKING, "Route Table", ResourceType.ROUTE_TABLE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -281,10 +296,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.SECURITY, "IAM Role"),
-                    createLibraryBlock(BlockType.SECURITY, "IAM Policy"),
-                    createLibraryBlock(BlockType.SECURITY, "KMS Key"),
-                    createLibraryBlock(BlockType.SECURITY, "Secrets Manager")
+                    createLibraryBlock(BlockType.SECURITY, "IAM Role", ResourceType.IAM_ROLE),
+                    createLibraryBlock(BlockType.SECURITY, "IAM Policy", ResourceType.IAM_POLICY),
+                    createLibraryBlock(BlockType.SECURITY, "KMS Key", ResourceType.KMS_KEY),
+                    createLibraryBlock(BlockType.SECURITY, "Secrets Manager", ResourceType.SECRETS_MANAGER)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -303,10 +318,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.INTEGRATION, "API Gateway"),
-                    createLibraryBlock(BlockType.INTEGRATION, "SQS Queue"),
-                    createLibraryBlock(BlockType.INTEGRATION, "SNS Topic"),
-                    createLibraryBlock(BlockType.INTEGRATION, "EventBridge Rule")
+                    createLibraryBlock(BlockType.INTEGRATION, "API Gateway", ResourceType.API_GATEWAY),
+                    createLibraryBlock(BlockType.INTEGRATION, "SQS Queue", ResourceType.SQS_QUEUE),
+                    createLibraryBlock(BlockType.INTEGRATION, "SNS Topic", ResourceType.SNS_TOPIC),
+                    createLibraryBlock(BlockType.INTEGRATION, "EventBridge Rule", ResourceType.EVENTBRIDGE_RULE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -325,10 +340,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Log Group"),
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Alarm"),
-                    createLibraryBlock(BlockType.MONITORING, "X-Ray Trace"),
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Dashboard")
+                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Log Group", ResourceType.CLOUDWATCH_LOG_GROUP),
+                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Alarm", ResourceType.CLOUDWATCH_ALARM),
+                    createLibraryBlock(BlockType.MONITORING, "X-Ray Trace", ResourceType.XRAY_TRACE),
+                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Dashboard", ResourceType.CLOUDWATCH_DASHBOARD)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -481,205 +496,6 @@ fun workspaceArea(
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
                         .verticalScroll(rememberScrollState())
-                )
-            }
-        }
-    }
-}
-
-// New component for drawing a debugging grid
-@Composable
-fun DebugGrid(
-    clickedPosition: Offset?,
-    clickedDpPosition: Offset?,
-    hoverPosition: Offset,
-    hoverDpPosition: Offset,
-    connectionPoints: List<Triple<String, ConnectionPointType, Offset>>,
-    blocks: List<Block>,
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current.density
-
-    Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-
-        // Grid spacing
-        val gridSpacing = 50f
-
-        // Draw vertical lines
-        for (x in 0..(width.toInt() / gridSpacing.toInt())) {
-            val xPos = x * gridSpacing
-            drawLine(
-                color = Color.LightGray.copy(alpha = 0.5f),
-                start = Offset(xPos, 0f),
-                end = Offset(xPos, height),
-                strokeWidth = 1f
-            )
-
-            if (x % 2 == 0) {
-                drawCircle(
-                    color = Color.Gray,
-                    radius = 2f,
-                    center = Offset(xPos, 0f)
-                )
-            }
-        }
-
-        // Draw horizontal lines
-        for (y in 0..(height.toInt() / gridSpacing.toInt())) {
-            val yPos = y * gridSpacing
-            drawLine(
-                color = Color.LightGray.copy(alpha = 0.5f),
-                start = Offset(0f, yPos),
-                end = Offset(width, yPos),
-                strokeWidth = 1f
-            )
-
-            if (y % 2 == 0) {
-                drawCircle(
-                    color = Color.Gray,
-                    radius = 2f,
-                    center = Offset(0f, yPos)
-                )
-            }
-        }
-
-        // Draw block bounds for debugging
-        for (block in blocks) {
-            // Convert dp to pixels for drawing
-            val pixelLeft = block.position.x * density
-            val pixelTop = block.position.y * density
-            val pixelWidth = block.size.x * density
-            val pixelHeight = block.size.y * density
-
-            // Draw a rectangle to show the block bounds
-            drawRect(
-                color = Color.Magenta.copy(alpha = 0.2f),
-                topLeft = Offset(pixelLeft, pixelTop),
-                size = androidx.compose.ui.geometry.Size(
-                    pixelWidth,
-                    pixelHeight
-                )
-            )
-
-            // Print debug info
-            println("Block ${block.content} - Drawing rectangle at ($pixelLeft, $pixelTop) with size ($pixelWidth, $pixelHeight)")
-            println("  Original dp pos: ${block.position.x}, ${block.position.y}")
-            println("  Multiplied by density: $density")
-        }
-
-        // Draw connection points for debugging
-        for ((blockId, type, position) in connectionPoints) {
-            val color = when (type) {
-                ConnectionPointType.INPUT -> Color.Green.copy(alpha = 0.7f)
-                ConnectionPointType.OUTPUT -> Color.Red.copy(alpha = 0.7f)
-            }
-
-            // Convert dp to pixels for drawing
-            val pixelPos = position.toPixelOffset(density)
-
-            // Draw a circle to indicate the connection point
-            val size = 6f
-            drawCircle(
-                color = color,
-                radius = size,
-                center = pixelPos
-            )
-
-            // Draw a cross inside to make it more visible
-            drawLine(
-                color = Color.Black.copy(alpha = 0.5f),
-                start = Offset(pixelPos.x - size, pixelPos.y),
-                end = Offset(pixelPos.x + size, pixelPos.y),
-                strokeWidth = 1f
-            )
-            drawLine(
-                color = Color.Black.copy(alpha = 0.5f),
-                start = Offset(pixelPos.x, pixelPos.y - size),
-                end = Offset(pixelPos.x, pixelPos.y + size),
-                strokeWidth = 1f
-            )
-        }
-
-        // Draw a crosshair at the clicked position
-        clickedPosition?.let { position ->
-            drawLine(
-                color = Color.Red,
-                start = Offset(position.x - 10, position.y),
-                end = Offset(position.x + 10, position.y),
-                strokeWidth = 2f
-            )
-            drawLine(
-                color = Color.Red,
-                start = Offset(position.x, position.y - 10),
-                end = Offset(position.x, position.y + 10),
-                strokeWidth = 2f
-            )
-
-            // Draw a circle at the clicked position
-            drawCircle(
-                color = Color.Red.copy(alpha = 0.3f),
-                radius = 10f,
-                center = position
-            )
-
-            // Also draw a circle at the dp position converted back to pixels
-            clickedDpPosition?.let { dpPos ->
-                val pixelPos = dpPos.toPixelOffset(density)
-                drawCircle(
-                    color = Color.Yellow.copy(alpha = 0.3f),
-                    radius = 10f,
-                    center = pixelPos
-                )
-            }
-        }
-        
-        // Draw a crosshair at the hover position
-        drawLine(
-            color = Color.Blue.copy(alpha = 0.5f),
-            start = Offset(hoverPosition.x - 10, hoverPosition.y),
-            end = Offset(hoverPosition.x + 10, hoverPosition.y),
-            strokeWidth = 1f
-        )
-        drawLine(
-            color = Color.Blue.copy(alpha = 0.5f),
-            start = Offset(hoverPosition.x, hoverPosition.y - 10),
-            end = Offset(hoverPosition.x, hoverPosition.y + 10),
-            strokeWidth = 1f
-        )
-    }
-    
-    // Add coordinate labels outside the Canvas
-    Box(modifier = modifier.fillMaxSize()) {
-        // Add some coordinate labels on the top edge
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            for (x in 0..10) {
-                val xPos = x * 100
-                Text(
-                    text = "$xPos",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.caption,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-        
-        // Add some coordinate labels on the left edge
-        Column(
-            modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            for (y in 0..10) {
-                val yPos = y * 50
-                Text(
-                    text = "$yPos",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.caption,
-                    modifier = Modifier.padding(start = 2.dp)
                 )
             }
         }

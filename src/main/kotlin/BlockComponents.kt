@@ -1,5 +1,4 @@
-// This is a complete, simplified approach for your connection system
-// Replace your entire BlockComponents.kt file with this:
+package terraformbuilder
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -26,7 +25,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.*
 import kotlin.math.atan2
@@ -34,11 +32,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.PI
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
-// Basic data structures
 enum class ConnectionPointType {
     INPUT, OUTPUT
 }
@@ -54,14 +48,12 @@ fun Offset.toPixelOffset(density: Float): Offset {
     return Offset(x * density, y * density)
 }
 
-/**
- * Block class that stores all positions in dp
- */
 data class Block(
     val id: String,
     val type: BlockType,
     private var _position: Offset = Offset.Zero,  // Position in dp
     var content: String,
+    var resourceType: ResourceType, // Type of resource (Lambda Function, S3 Bucket, etc.)
     private var _size: Offset = Offset.Zero,      // Size in dp
     var inputPosition: Offset = Offset.Zero,  // Position of the input connection point in dp
     var outputPosition: Offset = Offset.Zero,  // Position of the output connection point in dp
@@ -130,104 +122,6 @@ data class Block(
 
 enum class BlockType {
     COMPUTE, DATABASE, NETWORKING, SECURITY, INTEGRATION, MONITORING
-}
-
-/**
- * Represents a property for a Terraform resource
- */
-data class TerraformProperty(
-    val name: String,
-    val type: PropertyType,
-    val default: String? = null,
-    val required: Boolean = false,
-    val description: String = "",
-    val options: List<String> = emptyList() // For enum types
-)
-
-enum class PropertyType {
-    STRING, NUMBER, BOOLEAN, ENUM
-}
-
-// Map of block types to their available properties
-object TerraformProperties {
-    val blockTypeProperties = mapOf(
-        // Compute resources
-        Pair("Lambda Function", listOf(
-            TerraformProperty("function_name", PropertyType.STRING, required = true, description = "Name of the Lambda function"),
-            TerraformProperty("runtime", PropertyType.ENUM, default = "nodejs18.x", required = true, 
-                description = "Runtime environment", 
-                options = listOf("nodejs18.x", "nodejs16.x", "python3.9", "python3.8", "java11", "go1.x", "ruby2.7")),
-            TerraformProperty("handler", PropertyType.STRING, default = "index.handler", required = true, 
-                description = "Function entry point"),
-            TerraformProperty("memory_size", PropertyType.NUMBER, default = "128", description = "Memory allocation in MB"),
-            TerraformProperty("timeout", PropertyType.NUMBER, default = "3", description = "Timeout in seconds"),
-            TerraformProperty("publish", PropertyType.BOOLEAN, default = "false", description = "Publish new version")
-        )),
-        Pair("EC2 Instance", listOf(
-            TerraformProperty("instance_type", PropertyType.STRING, default = "t2.micro", required = true, description = "EC2 instance type"),
-            TerraformProperty("ami", PropertyType.STRING, required = true, description = "AMI ID to use for the instance"),
-            TerraformProperty("key_name", PropertyType.STRING, description = "Key pair name for SSH access"),
-            TerraformProperty("monitoring", PropertyType.BOOLEAN, default = "false", description = "Enable detailed monitoring")
-        )),
-        
-        // Database resources
-        Pair("DynamoDB Table", listOf(
-            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the DynamoDB table"),
-            TerraformProperty("billing_mode", PropertyType.ENUM, default = "PROVISIONED", 
-                options = listOf("PROVISIONED", "PAY_PER_REQUEST"), 
-                description = "Controls how you are charged for read and write throughput"),
-            TerraformProperty("read_capacity", PropertyType.NUMBER, default = "5", description = "Read capacity units"),
-            TerraformProperty("write_capacity", PropertyType.NUMBER, default = "5", description = "Write capacity units")
-        )),
-        Pair("RDS Instance", listOf(
-            TerraformProperty("allocated_storage", PropertyType.NUMBER, default = "10", required = true, description = "Allocated storage in gigabytes"),
-            TerraformProperty("engine", PropertyType.ENUM, required = true, 
-                options = listOf("mysql", "postgres", "mariadb", "oracle-ee", "sqlserver-ee"),
-                description = "Database engine"),
-            TerraformProperty("instance_class", PropertyType.STRING, default = "db.t3.micro", required = true, description = "Database instance type"),
-            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the database"),
-            TerraformProperty("username", PropertyType.STRING, required = true, description = "Master username"),
-            TerraformProperty("password", PropertyType.STRING, required = true, description = "Master password"),
-            TerraformProperty("skip_final_snapshot", PropertyType.BOOLEAN, default = "true", description = "Skip final snapshot before deletion")
-        )),
-        Pair("S3 Bucket", listOf(
-            TerraformProperty("bucket", PropertyType.STRING, description = "Bucket name (if not specified, a random name will be used)"),
-            TerraformProperty("acl", PropertyType.ENUM, default = "private", 
-                options = listOf("private", "public-read", "public-read-write", "authenticated-read"),
-                description = "Canned ACL for the bucket"),
-            TerraformProperty("versioning_enabled", PropertyType.BOOLEAN, default = "false", description = "Enable versioning"),
-            TerraformProperty("force_destroy", PropertyType.BOOLEAN, default = "false", description = "Allow deletion of non-empty bucket")
-        )),
-        
-        // Networking resources
-        Pair("VPC", listOf(
-            TerraformProperty("cidr_block", PropertyType.STRING, required = true, default = "10.0.0.0/16", description = "CIDR block for the VPC"),
-            TerraformProperty("enable_dns_support", PropertyType.BOOLEAN, default = "true", description = "Enable DNS support"),
-            TerraformProperty("enable_dns_hostnames", PropertyType.BOOLEAN, default = "false", description = "Enable DNS hostnames")
-        )),
-        Pair("Security Group", listOf(
-            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the security group"),
-            TerraformProperty("description", PropertyType.STRING, default = "Managed by Terraform", description = "Description of the security group"),
-            TerraformProperty("vpc_id", PropertyType.STRING, required = true, description = "VPC ID")
-        )),
-        
-        // Security resources
-        Pair("IAM Role", listOf(
-            TerraformProperty("name", PropertyType.STRING, required = true, description = "Name of the IAM role"),
-            TerraformProperty("description", PropertyType.STRING, description = "Description of the IAM role"),
-            TerraformProperty("assume_role_policy", PropertyType.STRING, required = true, description = "Policy that grants an entity permission to assume the role")
-        )),
-        Pair("KMS Key", listOf(
-            TerraformProperty("description", PropertyType.STRING, description = "Description of the KMS key"),
-            TerraformProperty("deletion_window_in_days", PropertyType.NUMBER, default = "10", description = "Duration in days after which the key is deleted"),
-            TerraformProperty("enable_key_rotation", PropertyType.BOOLEAN, default = "false", description = "Enable automatic key rotation")
-        ))
-    )
-    
-    // Helper method to get properties for a given block
-    fun getPropertiesForBlock(block: Block): List<TerraformProperty> {
-        return blockTypeProperties[block.content] ?: emptyList()
-    }
 }
 
 // State for tracking active connection being drawn
@@ -442,11 +336,13 @@ fun createBlock(
     id: String,
     type: BlockType,
     content: String,
+    resourceType: ResourceType
 ): Block {
     val block = Block(
         id = id,
         type = type,
-        content = content
+        content = content,
+        resourceType = resourceType
     )
     
     // Initialize default properties
@@ -901,14 +797,14 @@ fun PropertyEditorPanel(
                 Spacer(modifier = Modifier.width(12.dp))
                 
                 Text(
-                    text = "Edit ${block.content}",
+                    text = "${block.content} properties",
                     style = MaterialTheme.typography.h6
                 )
             }
             
             if (properties.isEmpty()) {
                 Text(
-                    text = "No editable properties available for this resource type.",
+                    text = "No properties available for ${block.content}.",
                     style = MaterialTheme.typography.body2
                 )
             } else {
@@ -991,11 +887,11 @@ fun PropertyEditorPanel(
                             PropertyType.BOOLEAN -> {
                                 // Use a key combining block ID and property name to reset state
                                 key(blockKey, property.name) {
-                                    var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
+                                    var checked by remember { mutableStateOf(currentValue.lowercase(Locale.getDefault()) == "true") }
                                     
                                     // Update checked state when currentValue changes (e.g., from outside)
                                     LaunchedEffect(currentValue) {
-                                        checked = currentValue.toLowerCase() == "true"
+                                        checked = currentValue.lowercase(Locale.getDefault()) == "true"
                                     }
                                     
                                     Row(
