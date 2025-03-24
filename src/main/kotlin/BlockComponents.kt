@@ -862,6 +862,9 @@ fun PropertyEditorPanel(
 ) {
     val properties = TerraformProperties.getPropertiesForBlock(block)
     
+    // Key for resetting internal state when block changes
+    val blockKey = remember(block.id) { block.id }
+    
     Card(
         modifier = modifier
             .widthIn(min = 320.dp, max = 400.dp),
@@ -937,107 +940,139 @@ fun PropertyEditorPanel(
                         // Property editor based on type
                         when (property.type) {
                             PropertyType.STRING -> {
-                                var value by remember { mutableStateOf(currentValue) }
-                                
-                                OutlinedTextField(
-                                    value = value,
-                                    onValueChange = { 
-                                        value = it
-                                        onPropertyChange(property.name, it)
-                                    },
-                                    label = { Text(property.description) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                            }
-                            
-                            PropertyType.NUMBER -> {
-                                var value by remember { mutableStateOf(currentValue) }
-                                
-                                OutlinedTextField(
-                                    value = value,
-                                    onValueChange = { newValue ->
-                                        // Only allow numbers
-                                        if (newValue.isEmpty() || newValue.all { it.isDigit() || it == '.' }) {
-                                            value = newValue
-                                            onPropertyChange(property.name, newValue)
-                                        }
-                                    },
-                                    label = { Text(property.description) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                            }
-                            
-                            PropertyType.BOOLEAN -> {
-                                var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
-                                
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp)
-                                ) {
-                                    Switch(
-                                        checked = checked,
-                                        onCheckedChange = { 
-                                            checked = it
-                                            onPropertyChange(property.name, it.toString())
+                                // Use a key combining block ID and property name to reset state
+                                key(blockKey, property.name) {
+                                    var value by remember { mutableStateOf(currentValue) }
+                                    
+                                    // Update value when currentValue changes (e.g., from outside)
+                                    LaunchedEffect(currentValue) {
+                                        value = currentValue
+                                    }
+                                    
+                                    OutlinedTextField(
+                                        value = value,
+                                        onValueChange = { 
+                                            value = it
+                                            onPropertyChange(property.name, it)
                                         },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = MaterialTheme.colors.primary
-                                        )
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Text(
-                                        text = property.description,
-                                        style = MaterialTheme.typography.body2
+                                        label = { Text(property.description) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true
                                     )
                                 }
                             }
                             
-                            PropertyType.ENUM -> {
-                                // State for dropdown
-                                var expanded by remember { mutableStateOf(false) }
-                                var selectedOption by remember { mutableStateOf(currentValue) }
-                                
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                            PropertyType.NUMBER -> {
+                                // Use a key combining block ID and property name to reset state
+                                key(blockKey, property.name) {
+                                    var value by remember { mutableStateOf(currentValue) }
+                                    
+                                    // Update value when currentValue changes (e.g., from outside)
+                                    LaunchedEffect(currentValue) {
+                                        value = currentValue
+                                    }
+                                    
                                     OutlinedTextField(
-                                        value = selectedOption,
-                                        onValueChange = { },
-                                        label = { Text(property.description) },
-                                        readOnly = true,
-                                        trailingIcon = {
-                                            IconButton(onClick = { expanded = !expanded }) {
-                                                Icon(
-                                                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                    contentDescription = if (expanded) "Collapse" else "Expand"
-                                                )
+                                        value = value,
+                                        onValueChange = { newValue ->
+                                            // Only allow numbers
+                                            if (newValue.isEmpty() || newValue.all { it.isDigit() || it == '.' }) {
+                                                value = newValue
+                                                onPropertyChange(property.name, newValue)
                                             }
                                         },
+                                        label = { Text(property.description) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true
+                                    )
+                                }
+                            }
+                            
+                            PropertyType.BOOLEAN -> {
+                                // Use a key combining block ID and property name to reset state
+                                key(blockKey, property.name) {
+                                    var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
+                                    
+                                    // Update checked state when currentValue changes (e.g., from outside)
+                                    LaunchedEffect(currentValue) {
+                                        checked = currentValue.toLowerCase() == "true"
+                                    }
+                                    
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { expanded = true }
-                                    )
-                                    
-                                    // Dropdown menu for enum values
-                                    DropdownMenu(
-                                        expanded = expanded,
-                                        onDismissRequest = { expanded = false },
-                                        modifier = Modifier
-                                            .fillMaxWidth(0.9f)
+                                            .padding(vertical = 8.dp)
                                     ) {
-                                        property.options.forEach { option ->
-                                            DropdownMenuItem(
-                                                onClick = {
-                                                    selectedOption = option
-                                                    expanded = false
-                                                    onPropertyChange(property.name, option)
+                                        Switch(
+                                            checked = checked,
+                                            onCheckedChange = { 
+                                                checked = it
+                                                onPropertyChange(property.name, it.toString())
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = MaterialTheme.colors.primary
+                                            )
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        
+                                        Text(
+                                            text = property.description,
+                                            style = MaterialTheme.typography.body2
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            PropertyType.ENUM -> {
+                                // Use a key combining block ID and property name to reset state
+                                key(blockKey, property.name) {
+                                    // State for dropdown
+                                    var expanded by remember { mutableStateOf(false) }
+                                    var selectedOption by remember { mutableStateOf(currentValue) }
+                                    
+                                    // Update selected option when currentValue changes (e.g., from outside)
+                                    LaunchedEffect(currentValue) {
+                                        selectedOption = currentValue
+                                    }
+                                    
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        OutlinedTextField(
+                                            value = selectedOption,
+                                            onValueChange = { },
+                                            label = { Text(property.description) },
+                                            readOnly = true,
+                                            trailingIcon = {
+                                                IconButton(onClick = { expanded = !expanded }) {
+                                                    Icon(
+                                                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                        contentDescription = if (expanded) "Collapse" else "Expand"
+                                                    )
                                                 }
-                                            ) {
-                                                Text(text = option)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { expanded = true }
+                                        )
+                                        
+                                        // Dropdown menu for enum values
+                                        DropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = { expanded = false },
+                                            modifier = Modifier
+                                                .fillMaxWidth(0.9f)
+                                        ) {
+                                            property.options.forEach { option ->
+                                                DropdownMenuItem(
+                                                    onClick = {
+                                                        selectedOption = option
+                                                        expanded = false
+                                                        onPropertyChange(property.name, option)
+                                                    }
+                                                ) {
+                                                    Text(text = option)
+                                                }
                                             }
                                         }
                                     }
