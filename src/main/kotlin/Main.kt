@@ -25,6 +25,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import java.util.*
 
 // Library block creation helper
@@ -49,13 +51,18 @@ fun app() {
     
     // Add sample blocks on first launch
     LaunchedEffect(Unit) {
-        // Add some sample blocks
+        // Add some sample blocks with initial properties
         blockState.addBlock(
             createBlock(
                 id = "block1",
                 type = BlockType.COMPUTE,
                 content = "Lambda Function"
-            ).apply { position = Offset(100f, 100f) }
+            ).apply { 
+                position = Offset(100f, 100f)
+                setProperty("function_name", "my-lambda-function")
+                setProperty("runtime", "nodejs18.x")
+                setProperty("handler", "index.handler")
+            }
         )
         
         blockState.addBlock(
@@ -63,7 +70,11 @@ fun app() {
                 id = "block2",
                 type = BlockType.DATABASE,
                 content = "S3 Bucket"
-            ).apply { position = Offset(400f, 200f) }
+            ).apply { 
+                position = Offset(400f, 200f) 
+                setProperty("bucket", "my-terraform-bucket")
+                setProperty("versioning_enabled", "true")
+            }
         )
         
         println("App: LaunchedEffect completed - blocks added")
@@ -467,8 +478,9 @@ fun workspaceArea(
                         blockState.updateBlockProperty(id, propertyName, propertyValue)
                     },
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.TopEnd)
                         .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
                 )
             }
         }

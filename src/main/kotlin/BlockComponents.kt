@@ -157,9 +157,11 @@ object TerraformProperties {
             TerraformProperty("runtime", PropertyType.ENUM, default = "nodejs18.x", required = true, 
                 description = "Runtime environment", 
                 options = listOf("nodejs18.x", "nodejs16.x", "python3.9", "python3.8", "java11", "go1.x", "ruby2.7")),
+            TerraformProperty("handler", PropertyType.STRING, default = "index.handler", required = true, 
+                description = "Function entry point"),
             TerraformProperty("memory_size", PropertyType.NUMBER, default = "128", description = "Memory allocation in MB"),
-            TerraformProperty("timeout", PropertyType.NUMBER, default = "3", description = "Function timeout in seconds"),
-            TerraformProperty("publish", PropertyType.BOOLEAN, default = "false", description = "Whether to publish a new Lambda version")
+            TerraformProperty("timeout", PropertyType.NUMBER, default = "3", description = "Timeout in seconds"),
+            TerraformProperty("publish", PropertyType.BOOLEAN, default = "false", description = "Publish new version")
         )),
         Pair("EC2 Instance", listOf(
             TerraformProperty("instance_type", PropertyType.STRING, default = "t2.micro", required = true, description = "EC2 instance type"),
@@ -860,138 +862,194 @@ fun PropertyEditorPanel(
 ) {
     val properties = TerraformProperties.getPropertiesForBlock(block)
     
-    Column(
+    Card(
         modifier = modifier
-            .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
-            .padding(16.dp)
-            .widthIn(max = 320.dp)
+            .widthIn(min = 320.dp, max = 400.dp),
+        elevation = 4.dp,
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Text(
-            text = "Edit ${block.content}",
-            style = MaterialTheme.typography.h6,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-        
-        if (properties.isEmpty()) {
-            Text("No editable properties available for this resource type.", 
-                style = MaterialTheme.typography.caption)
-        } else {
-            // For each property, create an appropriate editor based on type
-            properties.forEach { property ->
-                val currentValue = block.getProperty(property.name) ?: property.default ?: ""
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+        ) {
+            // Title with resource icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                // Resource type icon
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(
+                            color = when (block.type) {
+                                BlockType.COMPUTE -> Color(0xFF4C97FF)
+                                BlockType.DATABASE -> Color(0xFFFFAB19)
+                                BlockType.NETWORKING -> Color(0xFFFF8C1A)
+                                BlockType.SECURITY -> Color(0xFF40BF4A)
+                                BlockType.INTEGRATION -> Color(0xFF4C97FF)
+                                BlockType.MONITORING -> Color(0xFFFFAB19)
+                            },
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .border(1.dp, Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                )
                 
-                // Display property name with required indicator if needed
-                Row(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${property.name}${if (property.required) " *" else ""}",
-                        style = MaterialTheme.typography.subtitle2,
-                        modifier = Modifier.weight(1f)
-                    )
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                Text(
+                    text = "Edit ${block.content}",
+                    style = MaterialTheme.typography.h6
+                )
+            }
+            
+            if (properties.isEmpty()) {
+                Text(
+                    text = "No editable properties available for this resource type.",
+                    style = MaterialTheme.typography.body2
+                )
+            } else {
+                // For each property, create an appropriate editor based on type
+                properties.forEach { property ->
+                    val currentValue = block.getProperty(property.name) ?: property.default ?: ""
                     
-                    when (property.type) {
-                        PropertyType.STRING -> {
-                            var value by remember { mutableStateOf(TextFieldValue(currentValue)) }
-                            
-                            TextField(
-                                value = value,
-                                onValueChange = { 
-                                    value = it
-                                    onPropertyChange(property.name, it.text)
-                                },
-                                label = { Text(property.description) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.body2
+                    // Property section with label and field
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        // Property name with required indicator
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${property.name}${if (property.required) " *" else ""}",
+                                style = MaterialTheme.typography.subtitle2
                             )
-                        }
-                        
-                        PropertyType.NUMBER -> {
-                            var value by remember { mutableStateOf(TextFieldValue(currentValue)) }
                             
-                            TextField(
-                                value = value,
-                                onValueChange = { newValue ->
-                                    // Only allow numbers
-                                    if (newValue.text.isEmpty() || newValue.text.all { it.isDigit() || it == '.' }) {
-                                        value = newValue
-                                        onPropertyChange(property.name, newValue.text)
-                                    }
-                                },
-                                label = { Text(property.description) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.body2
-                            )
-                        }
-                        
-                        PropertyType.BOOLEAN -> {
-                            var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
-                            
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Checkbox(
-                                    checked = checked,
-                                    onCheckedChange = { 
-                                        checked = it
-                                        onPropertyChange(property.name, it.toString())
-                                    }
-                                )
+                            if (property.required) {
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = property.description,
-                                    style = MaterialTheme.typography.body2,
-                                    modifier = Modifier.padding(start = 8.dp)
+                                    text = "(required)",
+                                    style = MaterialTheme.typography.caption,
+                                    color = MaterialTheme.colors.primary
                                 )
                             }
                         }
                         
-                        PropertyType.ENUM -> {
-                            var expanded by remember { mutableStateOf(false) }
-                            var selectedOption by remember { mutableStateOf(currentValue) }
-                            
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                TextField(
-                                    value = TextFieldValue(selectedOption),
-                                    onValueChange = { },
-                                    label = { Text(property.description) },
-                                    readOnly = true,
-                                    trailingIcon = {
-                                        Icon(
-                                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                            contentDescription = if (expanded) "Collapse" else "Expand"
-                                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        // Property editor based on type
+                        when (property.type) {
+                            PropertyType.STRING -> {
+                                var value by remember { mutableStateOf(currentValue) }
+                                
+                                OutlinedTextField(
+                                    value = value,
+                                    onValueChange = { 
+                                        value = it
+                                        onPropertyChange(property.name, it)
                                     },
+                                    label = { Text(property.description) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                            }
+                            
+                            PropertyType.NUMBER -> {
+                                var value by remember { mutableStateOf(currentValue) }
+                                
+                                OutlinedTextField(
+                                    value = value,
+                                    onValueChange = { newValue ->
+                                        // Only allow numbers
+                                        if (newValue.isEmpty() || newValue.all { it.isDigit() || it == '.' }) {
+                                            value = newValue
+                                            onPropertyChange(property.name, newValue)
+                                        }
+                                    },
+                                    label = { Text(property.description) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                            }
+                            
+                            PropertyType.BOOLEAN -> {
+                                var checked by remember { mutableStateOf(currentValue.toLowerCase() == "true") }
+                                
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { expanded = true }
-                                )
-                                
-                                DropdownMenu(
-                                    expanded = expanded,
-                                    onDismissRequest = { expanded = false },
+                                        .padding(vertical = 8.dp)
                                 ) {
-                                    property.options.forEach { option ->
-                                        DropdownMenuItem(
-                                            onClick = {
-                                                selectedOption = option
-                                                expanded = false
-                                                onPropertyChange(property.name, option)
+                                    Switch(
+                                        checked = checked,
+                                        onCheckedChange = { 
+                                            checked = it
+                                            onPropertyChange(property.name, it.toString())
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = MaterialTheme.colors.primary
+                                        )
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    
+                                    Text(
+                                        text = property.description,
+                                        style = MaterialTheme.typography.body2
+                                    )
+                                }
+                            }
+                            
+                            PropertyType.ENUM -> {
+                                // State for dropdown
+                                var expanded by remember { mutableStateOf(false) }
+                                var selectedOption by remember { mutableStateOf(currentValue) }
+                                
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedTextField(
+                                        value = selectedOption,
+                                        onValueChange = { },
+                                        label = { Text(property.description) },
+                                        readOnly = true,
+                                        trailingIcon = {
+                                            IconButton(onClick = { expanded = !expanded }) {
+                                                Icon(
+                                                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                    contentDescription = if (expanded) "Collapse" else "Expand"
+                                                )
                                             }
-                                        ) {
-                                            Text(text = option)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { expanded = true }
+                                    )
+                                    
+                                    // Dropdown menu for enum values
+                                    DropdownMenu(
+                                        expanded = expanded,
+                                        onDismissRequest = { expanded = false },
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.9f)
+                                    ) {
+                                        property.options.forEach { option ->
+                                            DropdownMenuItem(
+                                                onClick = {
+                                                    selectedOption = option
+                                                    expanded = false
+                                                    onPropertyChange(property.name, option)
+                                                }
+                                            ) {
+                                                Text(text = option)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                    
+                    if (properties.last() != property) {
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
