@@ -477,6 +477,10 @@ fun workspaceArea(
                 onConnectionDragStart = onConnectionDragStart,
                 onUpdateBlockSize = { blockId, size ->
                     blockState.updateBlockSize(blockId, size)
+                },
+                onBlockSelected = { blockId -> 
+                    selectedBlockId = blockId
+                    println("Block selected through click: $blockId")
                 }
             )
         }

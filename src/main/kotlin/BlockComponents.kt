@@ -3,7 +3,6 @@ package terraformbuilder
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -32,6 +31,21 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.PI
+
+// Add new imports
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 enum class ConnectionPointType {
     INPUT, OUTPUT
@@ -359,18 +373,53 @@ fun blockView(
     onDragEnd: (Offset) -> Unit,
     onRename: (String) -> Unit,
     onConnectionDragStart: (Block, ConnectionPointType) -> Unit,
-    onUpdateBlockSize: (String, Offset) -> Unit
+    onUpdateBlockSize: (String, Offset) -> Unit,
+    onBlockSelected: (String) -> Unit = {}
 ) {
     var position by remember { mutableStateOf(block.position) }
     var isEditing by remember { mutableStateOf(false) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue(block.content)) }
     val density = LocalDensity.current.density
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    
+    // Track if we've just initiated a double-click
+    var isDoubleClickJustTriggered by remember { mutableStateOf(false) }
+    // Track if we should ignore the next focus loss
+    var ignoreFocusLoss by remember { mutableStateOf(false) }
     
     // Update our local position when the block's position changes externally
     LaunchedEffect(block.position) {
         position = block.position
     }
+    
+    // Request focus when editing starts
+    LaunchedEffect(isEditing) {
+        if (isEditing) {
+            println("BLOCK-FOCUS: Requesting focus for TextField in ${block.id}")
+            
+            // Request focus after a small delay to let composition settle
+            delay(100)
+            focusRequester.requestFocus()
+            
+            // Try again with a longer delay
+            delay(200)
+            if (isEditing) {
+                println("BLOCK-FOCUS: Re-requesting focus after delay")
+                focusRequester.requestFocus()
+            }
+        }
+    }
 
+    // Reset the double-click flag after a short time
+    LaunchedEffect(isDoubleClickJustTriggered) {
+        if (isDoubleClickJustTriggered) {
+            delay(300)
+            isDoubleClickJustTriggered = false
+        }
+    }
+
+    // The outermost Box that positions the block and handles size updates
     Box(
         modifier = Modifier
             .offset(position.x.dp, position.y.dp)
@@ -381,12 +430,12 @@ fun blockView(
                     coordinates.size.height / density
                 )
                 
-                // Only update size if it has changed to avoid unnecessary recompositions
                 if (block.size != size) {
                     onUpdateBlockSize(block.id, size)
                 }
             }
     ) {
+        // The entire content row containing connection points and the block content
         Row(
             modifier = Modifier.padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -401,7 +450,7 @@ fun blockView(
                 }
             )
 
-            // Block content - this is the part that can be dragged
+            // Block content Box - main clickable area
             Box(
                 modifier = Modifier
                     .background(
@@ -421,14 +470,41 @@ fun blockView(
                         shape = RoundedCornerShape(8.dp)
                     )
                     .padding(8.dp)
-                    .pointerInput(Unit) {
+                    // Handle clicks directly at the block level
+                    .pointerInput("tap-detection") {
                         detectTapGestures(
-                            onDoubleTap = { isEditing = true }
+                            onTap = { 
+                                // Only process single-click if not editing and not right after double-click
+                                if (!isEditing && !isDoubleClickJustTriggered) {
+                                    println("BLOCK-CLICK: Selected block ${block.id}")
+                                    onBlockSelected(block.id)
+                                }
+                            },
+                            onDoubleTap = {
+                                println("BLOCK-DOUBLE-CLICK: Setting editing mode for ${block.id}")
+                                // Mark as double-click triggered to prevent single-click firing
+                                isDoubleClickJustTriggered = true
+                                // Set flag to ignore the initial focus loss that might happen
+                                ignoreFocusLoss = true
+                                // Enter edit mode
+                                isEditing = true
+                                textFieldValue = TextFieldValue(block.content)
+                            }
                         )
                     }
-                    .pointerInput(Unit) {
+                    // Separate pointer input for drag
+                    .pointerInput("drag") {
                         detectDragGestures(
+                            onDragStart = {
+                                println("BLOCK-DRAG-START: Started dragging block ${block.id}")
+                                // Cancel editing if dragging starts
+                                if (isEditing) {
+                                    isEditing = false
+                                    onRename(textFieldValue.text)
+                                }
+                            },
                             onDragEnd = { 
+                                println("BLOCK-DRAG-END: Ended dragging block ${block.id}")
                                 onDragEnd(position) 
                             },
                             onDrag = { change, dragAmount ->
@@ -436,38 +512,64 @@ fun blockView(
                                 // Update position in dp coordinates
                                 val newPosition = position + Offset(dragAmount.x / density, dragAmount.y / density)
                                 position = newPosition
-                                
-                                // Update the block position in the BlockState during drag as well
-                                // This ensures connection points are updated in real-time
                                 onDragEnd(newPosition)
                             }
                         )
                     }
             ) {
+                println("BLOCK-RENDER: Block ${block.id} isEditing=$isEditing ignoreFocusLoss=$ignoreFocusLoss")
+                
                 if (isEditing) {
-                    TextField(
+                    // Simple BasicTextField with simpler focus handling
+                    BasicTextField(
                         value = textFieldValue,
                         onValueChange = {
+                            println("BLOCK-EDIT: Text changed to: ${it.text}")
                             textFieldValue = it
-                            onRename(it.text)
                         },
-                        modifier = Modifier.widthIn(min = 100.dp),
+                        modifier = Modifier
+                            .wrapContentWidth()
+                            .focusRequester(focusRequester)
+                            .zIndex(100f)
+                            .onFocusChanged { focusState ->
+                                println("BLOCK-FOCUS: Focus state changed to: ${focusState.isFocused}, ignoreFocusLoss=$ignoreFocusLoss")
+                                
+                                if (!focusState.isFocused && isEditing) {
+                                    if (ignoreFocusLoss) {
+                                        // First focus loss after starting edit - ignore it
+                                        println("BLOCK-FOCUS: Ignoring initial focus loss")
+                                        ignoreFocusLoss = false
+                                        // Request focus again
+                                        focusRequester.requestFocus()
+                                    } else {
+                                        // Real focus loss - exit edit mode
+                                        println("BLOCK-FOCUS: Real focus loss, exiting edit mode")
+                                        isEditing = false
+                                        onRename(textFieldValue.text)
+                                    }
+                                }
+                            },
                         textStyle = TextStyle(color = Color.White),
-                        colors = TextFieldDefaults.textFieldColors(
-                            textColor = Color.White,
-                            cursorColor = Color.White,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        singleLine = true
+                        cursorBrush = SolidColor(Color.White),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                println("BLOCK-EDIT: Done pressed, exiting edit mode")
+                                isEditing = false
+                                onRename(textFieldValue.text)
+                                focusManager.clearFocus()
+                            }
+                        )
                     )
                 } else {
+                    // Regular text display - no need for click handlers here
                     Text(
                         text = block.content,
                         color = Color.White,
                         style = MaterialTheme.typography.body1
                     )
-                }            
+                }
             }
 
             // Output connection point
