@@ -421,9 +421,10 @@ fun workspaceArea(
     // Check if mouse is hovering over any block (recalculate when mouse moves)
     LaunchedEffect(hoverDpPosition) {
         val newHoveredBlockId = blockState.blocks.find { block ->
-            // Check if the hover position (in dp) is within the block bounds (also in dp)
-            val blockLeft = block.position.x
-            val blockRight = blockLeft + block.size.x
+            // Create an expanded hit area that includes connection points
+            val connectionPointWidth = 16f // Width of connection points in dp
+            val blockLeft = block.position.x - connectionPointWidth // Expand left to include input connection point
+            val blockRight = block.position.x + block.size.x + connectionPointWidth // Expand right to include output connection point
             val blockTop = block.position.y
             val blockBottom = blockTop + block.size.y
 

@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -94,12 +93,12 @@ data class Block(
     // Updates the connection point positions based on the block's position and size
     private fun updateConnectionPoints() {
         // For input: left edge, vertically centered
-        // We position it slightly to the left (by -2dp) to make the half-circle appear attached to the block
-        inputPosition = _position + Offset(-2f, _size.y / 2f)
+        // Position it slightly to the left to appear as part of the block
+        inputPosition = _position + Offset(-6f, _size.y / 2f)
         
         // For output: right edge, vertically centered
-        // Position it at the right edge to make the half-circle appear attached to the block
-        outputPosition = _position + Offset(_size.x + 2f, _size.y / 2f)
+        // Position it slightly to the right to appear as part of the block
+        outputPosition = _position + Offset(_size.x + 6f, _size.y / 2f)
         
         // Print debug info
         println("Block $content position: $_position, size: $_size")
@@ -452,9 +451,9 @@ fun blockView(
         if (showInputPoint) {
             Box(
                 modifier = Modifier
-                    .offset((-8).dp, 0.dp)
+                    .offset((-10).dp, 0.dp)
                     .align(Alignment.CenterStart)
-                    .zIndex(0f) // Lower z-index ensures it appears behind the block
+                    .zIndex(0f)
             ) {
                 connectionPointView(
                     type = ConnectionPointType.INPUT,
@@ -469,9 +468,9 @@ fun blockView(
         if (showOutputPoint) {
             Box(
                 modifier = Modifier
-                    .offset(8.dp, 0.dp)
+                    .offset(10.dp, 0.dp)
                     .align(Alignment.CenterEnd)
-                    .zIndex(0f) // Same lower z-index as input point
+                    .zIndex(0f)
             ) {
                 connectionPointView(
                     type = ConnectionPointType.OUTPUT,
@@ -618,11 +617,15 @@ fun connectionPointView(
     // Use a half-circle design attached to the node
     Box(
         modifier = Modifier
-            .size(16.dp, 24.dp) // Reduced width, slightly taller for better touch area
+            .size(12.dp, 20.dp) // Slightly smaller width for a cleaner look
             .background(
                 color = when (type) {
-                    ConnectionPointType.INPUT -> if (isPressed) Color.Green else if (isHovered) Color.Green.copy(alpha = 0.9f) else Color.Green.copy(alpha = 0.7f)
-                    ConnectionPointType.OUTPUT -> if (isPressed) Color.Red else if (isHovered) Color.Red.copy(alpha = 0.9f) else Color.Red.copy(alpha = 0.7f)
+                    ConnectionPointType.INPUT -> if (isPressed) Color.Green.copy(alpha = 1f) 
+                                              else if (isHovered) Color.Green.copy(alpha = 0.9f) 
+                                              else Color.Green.copy(alpha = 0.8f)
+                    ConnectionPointType.OUTPUT -> if (isPressed) Color.Red.copy(alpha = 1f) 
+                                               else if (isHovered) Color.Red.copy(alpha = 0.9f) 
+                                               else Color.Red.copy(alpha = 0.8f)
                 },
                 shape = when (type) {
                     // Half circle for input (flat side on right)
