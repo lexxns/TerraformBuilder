@@ -338,6 +338,15 @@ class BlockState {
         
         return Triple(isNearby, nearestType, minDistance)
     }
+
+    fun clearAll() {
+        _blocks.clear()
+        _connections.clear()
+        dragState.isActive = false
+        dragState.sourceBlock = null
+        dragState.sourcePointType = null
+        dragState.currentPosition = Offset.Zero
+    }
 }
 
 // Block creation helper

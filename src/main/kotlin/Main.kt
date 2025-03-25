@@ -27,6 +27,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import java.util.*
+import terraformbuilder.github.*
+import terraformbuilder.terraform.*
+import kotlinx.coroutines.launch
+import terraformbuilder.components.GithubUrlDialog
 
 // Library block creation helper
 private fun createLibraryBlock(type: BlockType, content: String, resourceType: ResourceType): Block {
@@ -109,6 +113,82 @@ fun app() {
         println("APP: Initial drag position set to $connectionPoint")
     }
 
+    var showGithubDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    if (showGithubDialog) {
+        GithubUrlDialog(
+            onDismiss = { 
+                showGithubDialog = false 
+                errorMessage = null
+            },
+            onConfirm = { url ->
+                coroutineScope.launch {
+                    isLoading = true
+                    errorMessage = null
+                    try {
+                        println("APP: Processing GitHub URL: $url")
+                        val repoInfo = GithubUrlParser.parse(url)
+                        if (repoInfo != null) {
+                            println("APP: Parsed repo info: $repoInfo")
+                            
+                            // Clear existing blocks before loading new ones
+                            blockState.clearAll()
+                            
+                            val githubService = GithubService()
+                            val files = githubService.loadTerraformFiles(repoInfo)
+                            
+                            if (files.isEmpty()) {
+                                errorMessage = "No Terraform files found in repository"
+                                return@launch
+                            }
+                            
+                            println("APP: Loaded ${files.size} files")
+                            
+                            val parser = TerraformParser()
+                            val resources = files.flatMap { parser.parse(it) }
+                            println("APP: Parsed ${resources.size} resources")
+                            
+                            if (resources.isEmpty()) {
+                                errorMessage = "No Terraform resources found in files"
+                                return@launch
+                            }
+                            
+                            val blocks = parser.convertToBlocks(resources)
+                            println("APP: Created ${blocks.size} blocks")
+                            
+                            // Position blocks in a grid layout
+                            blocks.forEachIndexed { index, block ->
+                                val row = index / 3
+                                val col = index % 3
+                                val position = Offset(
+                                    100f + col * 300f,
+                                    100f + row * 200f
+                                )
+                                println("APP: Adding block ${block.content} at position $position")
+                                blockState.addBlock(block.copy(_position = position))
+                            }
+                            
+                            showGithubDialog = false
+                        } else {
+                            errorMessage = "Invalid GitHub URL format"
+                        }
+                    } catch (e: Exception) {
+                        println("APP: Error loading Terraform: ${e.message}")
+                        e.printStackTrace()
+                        errorMessage = "Error: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            isLoading = isLoading,
+            errorMessage = errorMessage
+        )
+    }
+
     MaterialTheme {
         Row(modifier = Modifier.fillMaxSize()) {
             // Block Library Panel
@@ -126,7 +206,8 @@ fun app() {
                         content = generateDefaultName(resourceType),
                         resourceType = resourceType
                     )
-                }
+                },
+                onGithubClick = { showGithubDialog = true }
             )
 
             // Workspace Area
@@ -203,7 +284,8 @@ fun app() {
 @Composable
 fun blockLibraryPanel(
     modifier: Modifier = Modifier,
-    onBlockSelected: (Block) -> Unit
+    onBlockSelected: (Block) -> Unit,
+    onGithubClick: () -> Unit
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<String>()) }
 
@@ -212,6 +294,19 @@ fun blockLibraryPanel(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Add GitHub button as first item
+        item {
+            Button(
+                onClick = onGithubClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text("Load from GitHub")
+            }
+        }
+
+        // Title
         item {
             Text("AWS Infrastructure", style = MaterialTheme.typography.h6)
         }
