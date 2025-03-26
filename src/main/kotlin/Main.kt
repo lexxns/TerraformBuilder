@@ -33,11 +33,11 @@ import kotlinx.coroutines.launch
 import terraformbuilder.components.GithubUrlDialog
 
 // Library block creation helper
-private fun createLibraryBlock(type: BlockType, content: String, resourceType: ResourceType): Block {
+private fun createLibraryBlock(type: BlockType, resourceType: ResourceType): Block {
     return createBlock(
         id = UUID.randomUUID().toString(),
         type = type,
-        content = content,
+        content = resourceType.displayName,
         resourceType = resourceType
     )
 }
@@ -324,10 +324,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.COMPUTE, "Lambda Function", ResourceType.LAMBDA_FUNCTION),
-                    createLibraryBlock(BlockType.COMPUTE, "EC2 Instance", ResourceType.EC2_INSTANCE),
-                    createLibraryBlock(BlockType.COMPUTE, "ECS Cluster", ResourceType.ECS_CLUSTER),
-                    createLibraryBlock(BlockType.COMPUTE, "ECS Service", ResourceType.ECS_SERVICE)
+                    createLibraryBlock(BlockType.COMPUTE, ResourceType.LAMBDA_FUNCTION),
+                    createLibraryBlock(BlockType.COMPUTE, ResourceType.EC2_HOST),
+                    createLibraryBlock(BlockType.COMPUTE, ResourceType.ECS_CLUSTER),
+                    createLibraryBlock(BlockType.COMPUTE, ResourceType.ECS_SERVICE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -346,10 +346,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.DATABASE, "DynamoDB Table", ResourceType.DYNAMODB_TABLE),
-                    createLibraryBlock(BlockType.DATABASE, "RDS Instance", ResourceType.RDS_INSTANCE),
-                    createLibraryBlock(BlockType.DATABASE, "S3 Bucket", ResourceType.S3_BUCKET),
-                    createLibraryBlock(BlockType.DATABASE, "ElastiCache", ResourceType.ELASTICACHE)
+                    createLibraryBlock(BlockType.DATABASE, ResourceType.DYNAMODB_TABLE),
+                    createLibraryBlock(BlockType.DATABASE, ResourceType.RDS_CLUSTER),
+                    createLibraryBlock(BlockType.DATABASE, ResourceType.S3_BUCKET),
+                    createLibraryBlock(BlockType.DATABASE, ResourceType.ELASTICACHE_CLUSTER)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -368,10 +368,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.NETWORKING, "VPC", ResourceType.VPC),
-                    createLibraryBlock(BlockType.NETWORKING, "Subnet", ResourceType.SUBNET),
-                    createLibraryBlock(BlockType.NETWORKING, "Security Group", ResourceType.SECURITY_GROUP),
-                    createLibraryBlock(BlockType.NETWORKING, "Route Table", ResourceType.ROUTE_TABLE)
+                    createLibraryBlock(BlockType.NETWORKING, ResourceType.VPC),
+                    createLibraryBlock(BlockType.NETWORKING, ResourceType.SUBNET),
+                    createLibraryBlock(BlockType.NETWORKING, ResourceType.SECURITY_GROUP),
+                    createLibraryBlock(BlockType.NETWORKING, ResourceType.ROUTE_TABLE)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -390,10 +390,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.SECURITY, "IAM Role", ResourceType.IAM_ROLE),
-                    createLibraryBlock(BlockType.SECURITY, "IAM Policy", ResourceType.IAM_POLICY),
-                    createLibraryBlock(BlockType.SECURITY, "KMS Key", ResourceType.KMS_KEY),
-                    createLibraryBlock(BlockType.SECURITY, "Secrets Manager", ResourceType.SECRETS_MANAGER)
+                    createLibraryBlock(BlockType.SECURITY, ResourceType.IAM_ROLE),
+                    createLibraryBlock(BlockType.SECURITY, ResourceType.IAM_POLICY),
+                    createLibraryBlock(BlockType.SECURITY, ResourceType.KMS_KEY),
+                    createLibraryBlock(BlockType.SECURITY, ResourceType.SECRETSMANAGER_SECRET)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -412,10 +412,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.INTEGRATION, "API Gateway", ResourceType.API_GATEWAY),
-                    createLibraryBlock(BlockType.INTEGRATION, "SQS Queue", ResourceType.SQS_QUEUE),
-                    createLibraryBlock(BlockType.INTEGRATION, "SNS Topic", ResourceType.SNS_TOPIC),
-                    createLibraryBlock(BlockType.INTEGRATION, "EventBridge Rule", ResourceType.EVENTBRIDGE_RULE)
+                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.API_GATEWAY_REST_API),
+                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.SQS_QUEUE),
+                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.SNS_TOPIC),
+                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.KINESIS_FIREHOSE_DELIVERY_STREAM)
                 ),
                 onBlockSelected = onBlockSelected
             )
@@ -434,10 +434,10 @@ fun blockLibraryPanel(
                     }
                 },
                 blocks = listOf(
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Log Group", ResourceType.CLOUDWATCH_LOG_GROUP),
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Alarm", ResourceType.CLOUDWATCH_ALARM),
-                    createLibraryBlock(BlockType.MONITORING, "X-Ray Trace", ResourceType.XRAY_TRACE),
-                    createLibraryBlock(BlockType.MONITORING, "CloudWatch Dashboard", ResourceType.CLOUDWATCH_DASHBOARD)
+                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_LOG_GROUP),
+                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_METRIC_ALARM),
+                    createLibraryBlock(BlockType.MONITORING, ResourceType.XRAY_GROUP),
+                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_DASHBOARD)
                 ),
                 onBlockSelected = onBlockSelected
             )

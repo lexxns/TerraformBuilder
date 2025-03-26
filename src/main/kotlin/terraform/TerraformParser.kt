@@ -2,8 +2,8 @@ package terraformbuilder.terraform
 
 import terraformbuilder.Block
 import terraformbuilder.BlockType
-import terraformbuilder.ResourceType
 import com.bertramlabs.plugins.hcl4j.HCLParser
+import terraformbuilder.ResourceType
 import java.io.StringReader
 
 data class TerraformResource(

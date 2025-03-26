@@ -4,25 +4,48 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.InputStream
 
 class TerraformSchemaLoader {
-    fun loadProviderSchema(): Map<ResourceType, List<TerraformProperty>> {
-        // Run terraform providers schema -json command
-        val process = ProcessBuilder(
-            "terraform", "providers", "schema", "-json"
-        ).start()
+    private val objectMapper = ObjectMapper()
+
+    fun loadProviderSchema(version: String): Pair<JsonNode, Map<ResourceType, List<TerraformProperty>>> {
+        val schemaStream = getSchemaForVersion(version)
+        val root = objectMapper.readTree(schemaStream)
         
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
+        val awsSchema = root
+            .path("provider_schemas")
+            .path("registry.terraform.io/hashicorp/aws")
+            .path("resource_schemas")
+            
+        return Pair(awsSchema, buildResourceMap(awsSchema))
+    }
+
+    private fun getSchemaForVersion(version: String): InputStream {
+        // Convert version format (e.g., "5.92.0" to "5_92_0")
+        val formattedVersion = version.replace(".", "_")
+        val resourcePath = "terraform.aws/$formattedVersion/schema.json"
         
-        return parseSchemaJson(output)
+        return javaClass.classLoader.getResourceAsStream(resourcePath)
+            ?: throw IllegalArgumentException(
+                "Schema not found for AWS provider version $version. " +
+                "Available versions: ${listAvailableVersions()}"
+            )
     }
     
-    private fun parseSchemaJson(json: String): Map<ResourceType, List<TerraformProperty>> {
-        val mapper = ObjectMapper()
-        val root = mapper.readTree(json)
+    private fun listAvailableVersions(): List<String> {
+        return javaClass.classLoader
+            .getResourceAsStream("terraform.aws")
+            ?.bufferedReader()
+            ?.readLines()
+            ?.filter { it.endsWith("schema.json") }
+            ?.map { it.removeSuffix("/schema.json").replace("_", ".") }
+            ?: emptyList()
+    }
+    
+    private fun parseSchemaJson(schemaStream: InputStream): Map<ResourceType, List<TerraformProperty>> {
+        val root = objectMapper.readTree(schemaStream)
         
-        // Navigate to AWS provider schema
         val awsSchema = root
             .path("provider_schemas")
             .path("registry.terraform.io/hashicorp/aws")
@@ -34,13 +57,12 @@ class TerraformSchemaLoader {
     private fun buildResourceMap(schema: JsonNode): Map<ResourceType, List<TerraformProperty>> {
         val result = mutableMapOf<ResourceType, List<TerraformProperty>>()
         
-        // Map each resource type we care about
         ResourceType.values().forEach { resourceType ->
-            val terraformName = resourceType.toTerraformName()
-            val resourceSchema = schema.path(terraformName)
-            
-            if (!resourceSchema.isMissingNode) {
-                result[resourceType] = extractProperties(resourceSchema)
+            if (resourceType != ResourceType.UNKNOWN) {
+                val resourceSchema = schema.path(resourceType.resourceName)
+                if (!resourceSchema.isMissingNode) {
+                    result[resourceType] = extractProperties(resourceSchema)
+                }
             }
         }
         

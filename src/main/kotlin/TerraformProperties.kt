@@ -1,5 +1,7 @@
 package terraformbuilder
 
+import com.fasterxml.jackson.databind.JsonNode
+
 /**
  * Represents a property for a Terraform resource
  */
@@ -19,21 +21,50 @@ enum class PropertyType {
 // Map of block types to their available properties
 object TerraformProperties {
     private val schemaLoader = TerraformSchemaLoader()
-    private val blockTypeProperties: Map<ResourceType, List<TerraformProperty>> by lazy {
-        try {
-            schemaLoader.loadProviderSchema()
+    private var currentSchema: Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>> = loadLatestSchema()
+
+    /**
+     * Get all available resource types
+     */
+    fun getResourceTypes(): List<ResourceType> = currentSchema.first
+
+    /**
+     * Get the properties for a specific block
+     */
+    fun getPropertiesForBlock(block: Block): List<TerraformProperty> {
+        return currentSchema.second[block.resourceType] ?: emptyList()
+    }
+
+    private fun loadLatestSchema(): Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>> {
+        return try {
+            val latestVersion = getAvailableVersions().firstOrNull()
+                ?: throw IllegalStateException("No AWS provider versions found")
+                
+            val schema = schemaLoader.loadProviderSchema(latestVersion)
+            // TODO support multiple schemas
+            val resourceTypes = ResourceType.entries
+            Pair(resourceTypes, schema.second)
         } catch (e: Exception) {
-            // Fallback to hardcoded properties if schema loading fails
-            fallbackProperties()
+            println("Failed to load schema: ${e.message}")
+            Pair(emptyList(), fallbackProperties())
+        }
+    }
+
+    private fun getAvailableVersions(): List<String> {
+        return try {
+            TerraformProperties::class.java.classLoader
+                .getResourceAsStream("terraform.aws")
+                ?.bufferedReader()
+                ?.readLines()
+                ?.filter { it.endsWith("schema.json") }
+                ?.map { it.substringBeforeLast("/schema.json").replace("_", ".") }
+                ?.sortedByDescending { it }
+                ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
         }
     }
     
-    // Helper method to get properties for a given block
-    fun getPropertiesForBlock(block: Block): List<TerraformProperty> {
-        return blockTypeProperties[block.resourceType] ?: emptyList()
-    }
-    
-    // Move existing hardcoded properties to a fallback method
     private fun fallbackProperties(): Map<ResourceType, List<TerraformProperty>> {
         return mapOf(
             // ... existing hardcoded properties ...
