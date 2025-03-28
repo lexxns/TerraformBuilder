@@ -56,11 +56,11 @@ object TerraformProperties {
                 .getResourceAsStream("terraform.aws")
                 ?.bufferedReader()
                 ?.readLines()
-                ?.filter { it.endsWith("schema.json") }
-                ?.map { it.substringBeforeLast("/schema.json").replace("_", ".") }
+                ?.map { it.replace("_", ".") }
                 ?.sortedByDescending { it }
                 ?: emptyList()
         } catch (e: Exception) {
+            println(e.message)
             emptyList()
         }
     }
