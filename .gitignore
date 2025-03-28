@@ -43,3 +43,7 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+src/main/kotlin/resources/terraform.aws/*
+src/main/kotlin/terraformbuilder/ResourceType.kt
+schema.json
