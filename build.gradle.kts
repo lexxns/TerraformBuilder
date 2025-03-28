@@ -24,7 +24,7 @@ dependencies {
     // With compose.desktop.common you will also lose @Preview functionality
     implementation(compose.desktop.currentOs)
     implementation("com.bertramlabs.plugins:hcl4j:0.9.4")
-    
+
     // Add SLF4J implementation
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("org.slf4j:slf4j-simple:2.0.17")
@@ -57,6 +57,23 @@ tasks.register<Task>("generateTerraformSchemas") {
         awsVersions.forEach { version ->
             val versionDirName = version.replace(".", "_")
 
+            // Ensure resources directory exists
+            val resourceDir = file("src/main/resources/terraform.aws/$versionDirName")
+            if (!resourceDir.exists()) {
+                if (!resourceDir.mkdirs()) {
+                    logger.error("Failed to create resource directory: ${resourceDir.absolutePath}")
+                    return@forEach
+                }
+                logger.lifecycle("Created resource directory: ${resourceDir.absolutePath}")
+            }
+
+            // Check if schema file already exists
+            val schemaFile = file("${resourceDir.absolutePath}/schema.json")
+            if (schemaFile.exists()) {
+                logger.lifecycle("Schema file already exists for AWS provider version $version, skipping generation")
+                return@forEach
+            }
+
             // Create temporary working directory
             val workDir = layout.buildDirectory.dir("terraform-temp/$versionDirName").get().asFile
             if (!workDir.exists() && !workDir.mkdirs()) {
@@ -84,16 +101,6 @@ tasks.register<Task>("generateTerraformSchemas") {
                 return@forEach
             }
 
-            // Ensure resources directory exists
-            val resourceDir = file("src/main/resources/terraform.aws/$versionDirName")
-            if (!resourceDir.exists()) {
-                if (!resourceDir.mkdirs()) {
-                    logger.error("Failed to create resource directory: ${resourceDir.absolutePath}")
-                    return@forEach
-                }
-                logger.lifecycle("Created resource directory: ${resourceDir.absolutePath}")
-            }
-
             // Initialize terraform
             logger.lifecycle("Initializing Terraform for AWS provider version $version...")
             val initResult = project.exec {
@@ -106,7 +113,6 @@ tasks.register<Task>("generateTerraformSchemas") {
                 logger.lifecycle("Terraform initialized successfully for version $version")
 
                 // Generate schema
-                val schemaFile = file("${resourceDir.absolutePath}/schema.json")
                 logger.lifecycle("Generating schema to: ${schemaFile.absolutePath}")
 
                 try {
