@@ -2,8 +2,6 @@ package terraformbuilder
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.InputStream
 
 class TerraformSchemaLoader {
@@ -42,22 +40,11 @@ class TerraformSchemaLoader {
             ?.map { it.removeSuffix("/schema.json").replace("_", ".") }
             ?: emptyList()
     }
-    
-    private fun parseSchemaJson(schemaStream: InputStream): Map<ResourceType, List<TerraformProperty>> {
-        val root = objectMapper.readTree(schemaStream)
-        
-        val awsSchema = root
-            .path("provider_schemas")
-            .path("registry.terraform.io/hashicorp/aws")
-            .path("resource_schemas")
-            
-        return buildResourceMap(awsSchema)
-    }
-    
+
     private fun buildResourceMap(schema: JsonNode): Map<ResourceType, List<TerraformProperty>> {
         val result = mutableMapOf<ResourceType, List<TerraformProperty>>()
         
-        ResourceType.values().forEach { resourceType ->
+        ResourceType.entries.forEach { resourceType ->
             if (resourceType != ResourceType.UNKNOWN) {
                 val resourceSchema = schema.path(resourceType.resourceName)
                 if (!resourceSchema.isMissingNode) {
@@ -85,6 +72,7 @@ class TerraformSchemaLoader {
                 name = name,
                 type = type,
                 required = details.path("required").asBoolean(false),
+                deprecated = details.path("deprecated").asBoolean(false),
                 description = details.path("description").asText(""),
                 // We could potentially extract options for enum types from validation blocks
                 options = emptyList()

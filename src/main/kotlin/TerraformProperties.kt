@@ -1,15 +1,16 @@
 package terraformbuilder
 
-import com.fasterxml.jackson.databind.JsonNode
-
 /**
  * Represents a property for a Terraform resource
  */
+// TODO support remaining atributes e.g. computed
+// See: https://developer.hashicorp.com/terraform/plugin/sdkv2/schemas/schema-behaviors
 data class TerraformProperty(
     val name: String,
     val type: PropertyType,
     val default: String? = null,
     val required: Boolean = false,
+    val deprecated: Boolean = false,
     val description: String = "",
     val options: List<String> = emptyList() // For enum types
 )
@@ -22,11 +23,6 @@ enum class PropertyType {
 object TerraformProperties {
     private val schemaLoader = TerraformSchemaLoader()
     private var currentSchema: Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>> = loadLatestSchema()
-
-    /**
-     * Get all available resource types
-     */
-    fun getResourceTypes(): List<ResourceType> = currentSchema.first
 
     /**
      * Get the properties for a specific block
