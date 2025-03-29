@@ -46,4 +46,8 @@ class VariableState {
     fun getVariable(name: String): TerraformVariable? {
         return _variables.find { it.name == name }
     }
+
+    fun clearAll() {
+        _variables.clear()
+    }
 }

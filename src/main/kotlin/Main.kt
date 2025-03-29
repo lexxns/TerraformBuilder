@@ -4,34 +4,35 @@ import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import java.util.*
-import terraformbuilder.github.*
-import terraformbuilder.terraform.*
 import kotlinx.coroutines.launch
 import terraformbuilder.components.GithubUrlDialog
 import terraformbuilder.components.variableDialog
+import terraformbuilder.github.GithubService
+import terraformbuilder.github.GithubUrlParser
+import terraformbuilder.terraform.TerraformParser
+import terraformbuilder.terraform.TerraformVariable
+import terraformbuilder.terraform.VariableState
+import java.util.*
 
 // Library block creation helper
 private fun createLibraryBlock(type: BlockType, resourceType: ResourceType): Block {
@@ -61,7 +62,7 @@ fun app() {
     val density = LocalDensity.current.density
 
     val blockState = remember { BlockState() }
-    
+
     // Add sample blocks on first launch
     LaunchedEffect(Unit) {
         // Add some sample blocks with initial properties
@@ -71,45 +72,45 @@ fun app() {
                 type = BlockType.COMPUTE,
                 content = "lambda-demo",
                 resourceType = ResourceType.LAMBDA_FUNCTION
-            ).apply { 
+            ).apply {
                 position = Offset(100f, 100f)
                 setProperty("function_name", "my-lambda-function")
                 setProperty("runtime", "nodejs18.x")
                 setProperty("handler", "index.handler")
             }
         )
-        
+
         blockState.addBlock(
             createBlock(
                 id = "block2",
                 type = BlockType.DATABASE,
                 content = "bucket-storage",
                 resourceType = ResourceType.S3_BUCKET
-            ).apply { 
-                position = Offset(400f, 200f) 
+            ).apply {
+                position = Offset(400f, 200f)
                 setProperty("bucket", "my-terraform-bucket")
                 setProperty("versioning_enabled", "true")
             }
         )
-        
+
         println("App: LaunchedEffect completed - blocks added")
     }
-    
+
     // Track when the mouse button is down during a drag
     var isMouseDown by remember { mutableStateOf(false) }
-    
+
     // When blocks start a connection, update our state
     val onConnectionDragStart: (Block, ConnectionPointType) -> Unit = { block, pointType ->
         // Start the connection
         blockState.startConnectionDrag(block, pointType)
-        
+
         // Set the initial drag position to the connection point's position
         val connectionPoint = block.getConnectionPointPosition(pointType)
         blockState.updateDragPosition(connectionPoint)
-        
+
         // Set the mouse as down so we know we're dragging a connection
         isMouseDown = true
-        
+
         println("APP: Connection drag started from ${block.content}, type $pointType")
         println("APP: Initial drag position set to $connectionPoint")
     }
@@ -118,14 +119,14 @@ fun app() {
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    
+
     var showVariablesDialog by remember { mutableStateOf(false) }
     val variableState = remember { VariableState() }
-    
+
     if (showGithubDialog) {
         GithubUrlDialog(
-            onDismiss = { 
-                showGithubDialog = false 
+            onDismiss = {
+                showGithubDialog = false
                 errorMessage = null
             },
             onConfirm = { url ->
@@ -137,44 +138,52 @@ fun app() {
                         val repoInfo = GithubUrlParser.parse(url)
                         if (repoInfo != null) {
                             println("APP: Parsed repo info: $repoInfo")
-                            
-                            // Clear existing blocks before loading new ones
+
+                            // Clear existing blocks and variables before loading new ones
                             blockState.clearAll()
-                            
+                            variableState.clearAll()
+
                             val githubService = GithubService()
                             val files = githubService.loadTerraformFiles(repoInfo)
-                            
+
                             if (files.isEmpty()) {
                                 errorMessage = "No Terraform files found in repository"
                                 return@launch
                             }
-                            
+
                             println("APP: Loaded ${files.size} files")
-                            
+
                             val parser = TerraformParser()
-                            val resources = files.flatMap { parser.parse(it) }
-                            println("APP: Parsed ${resources.size} resources")
-                            
-                            if (resources.isEmpty()) {
-                                errorMessage = "No Terraform resources found in files"
+
+                            // Parse all files
+                            files.forEach { file ->
+                                val parseResult = parser.parse(file)
+
+                                // Add variables
+                                parseResult.variables.forEach { variable ->
+                                    println("APP: Adding variable ${variable.name}")
+                                    variableState.addVariable(variable)
+                                }
+
+                                // Convert and add resources
+                                val blocks = parser.convertToBlocks(parseResult.resources)
+                                blocks.forEachIndexed { index, block ->
+                                    val row = index / 3
+                                    val col = index % 3
+                                    val position = Offset(
+                                        50f + col * 100f,
+                                        50f + row * 50f
+                                    )
+                                    println("APP: Adding block ${block.content} at position $position")
+                                    blockState.addBlock(block.copy(_position = position))
+                                }
+                            }
+
+                            if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                                errorMessage = "No Terraform resources or variables found in files"
                                 return@launch
                             }
-                            
-                            val blocks = parser.convertToBlocks(resources)
-                            println("APP: Created ${blocks.size} blocks")
-                            
-                            // Position blocks in a grid layout
-                            blocks.forEachIndexed { index, block ->
-                                val row = index / 3
-                                val col = index % 3
-                                val position = Offset(
-                                    50f + col * 100f,
-                                    50f + row * 50f
-                                )
-                                println("APP: Adding block ${block.content} at position $position")
-                                blockState.addBlock(block.copy(_position = position))
-                            }
-                            
+
                             showGithubDialog = false
                         } else {
                             errorMessage = "Invalid GitHub URL format"
@@ -241,7 +250,7 @@ fun app() {
                                 change.consume()
                                 hoverPosition = change.position
                                 hoverDpPosition = change.position.toDpOffset(density)
-                                
+
                                 // Update connection drag position if active
                                 if (blockState.dragState.isActive) {
                                     blockState.updateDragPosition(hoverDpPosition)
@@ -263,11 +272,11 @@ fun app() {
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val position = event.changes.first().position
-                                
+
                                 // Update hover position on any mouse movement
                                 hoverPosition = position
                                 hoverDpPosition = position.toDpOffset(density)
-                                
+
                                 // If we're dragging a connection, update its position
                                 if (blockState.dragState.isActive && isMouseDown) {
                                     blockState.updateDragPosition(hoverDpPosition)
@@ -320,7 +329,7 @@ fun blockLibraryPanel(
             ) {
                 Text("Load from GitHub")
             }
-            
+
             Button(
                 onClick = onVariablesClick,
                 modifier = Modifier
@@ -521,13 +530,13 @@ fun workspaceArea(
     // State to track clicked positions for debugging
     var clickedPosition by remember { mutableStateOf<Offset?>(null) }
     var clickedDpPosition by remember { mutableStateOf<Offset?>(null) }
-    var selectedBlockId by remember { mutableStateOf<String?>(null) }    
+    var selectedBlockId by remember { mutableStateOf<String?>(null) }
     var hoveredBlockId by remember { mutableStateOf<String?>(null) }
     val density = LocalDensity.current.density
 
     // Force recomposition when any block content changes
     val blockContentVersion = remember { mutableStateOf(0) }
-    
+
     // Collect connection points for debugging
     val connectionPoints = remember(blockState.blocks) {
         blockState.blocks.flatMap { block ->
@@ -537,20 +546,21 @@ fun workspaceArea(
             )
         }
     }
-    
+
     // Check if mouse is hovering over any block (recalculate when mouse moves)
     LaunchedEffect(hoverDpPosition) {
         val newHoveredBlockId = blockState.blocks.find { block ->
             // Create an expanded hit area that includes connection points
             val connectionPointWidth = 16f // Width of connection points in dp
             val blockLeft = block.position.x - connectionPointWidth // Expand left to include input connection point
-            val blockRight = block.position.x + block.size.x + connectionPointWidth // Expand right to include output connection point
+            val blockRight =
+                block.position.x + block.size.x + connectionPointWidth // Expand right to include output connection point
             val blockTop = block.position.y
             val blockBottom = blockTop + block.size.y
 
             hoverDpPosition.x in blockLeft..blockRight && hoverDpPosition.y in blockTop..blockBottom
         }?.id
-        
+
         // Only update if changed to avoid unnecessary recompositions
         if (hoveredBlockId != newHoveredBlockId) {
             hoveredBlockId = newHoveredBlockId
@@ -578,10 +588,10 @@ fun workspaceArea(
 
                         dpPos.x in blockLeft..blockRight && dpPos.y in blockTop..blockBottom
                     }?.id
-                    
+
                     // Update selected block (null if clicked on empty space)
                     selectedBlockId = clickedBlockId
-                    
+
                     println("Workspace click: ${if (clickedBlockId != null) "Selected block $clickedBlockId" else "Deselected block"}")
                 }
             }
@@ -624,7 +634,7 @@ fun workspaceArea(
                 onUpdateBlockSize = { blockId, size ->
                     blockState.updateBlockSize(blockId, size)
                 },
-                onBlockSelected = { blockId -> 
+                onBlockSelected = { blockId ->
                     selectedBlockId = blockId
                     println("Block selected through click: $blockId")
                 },
