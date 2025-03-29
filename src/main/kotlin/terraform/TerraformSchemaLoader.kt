@@ -11,12 +11,12 @@ class TerraformSchemaLoader {
     fun loadProviderSchema(version: String): Pair<JsonNode, Map<ResourceType, List<TerraformProperty>>> {
         val schemaStream = getSchemaForVersion(version)
         val root = objectMapper.readTree(schemaStream)
-        
+
         val awsSchema = root
             .path("provider_schemas")
             .path("registry.terraform.io/hashicorp/aws")
             .path("resource_schemas")
-            
+
         return Pair(awsSchema, buildResourceMap(awsSchema))
     }
 
@@ -24,14 +24,14 @@ class TerraformSchemaLoader {
         // Convert version format (e.g., "5.92.0" to "5_92_0")
         val formattedVersion = version.replace(".", "_")
         val resourcePath = "terraform.aws/$formattedVersion/schema.json"
-        
+
         return javaClass.classLoader.getResourceAsStream(resourcePath)
             ?: throw IllegalArgumentException(
                 "Schema not found for AWS provider version $version. " +
-                "Available versions: ${listAvailableVersions()}"
+                        "Available versions: ${listAvailableVersions()}"
             )
     }
-    
+
     private fun listAvailableVersions(): List<String> {
         return javaClass.classLoader
             .getResourceAsStream("terraform.aws")
@@ -44,7 +44,7 @@ class TerraformSchemaLoader {
 
     private fun buildResourceMap(schema: JsonNode): Map<ResourceType, List<TerraformProperty>> {
         val result = mutableMapOf<ResourceType, List<TerraformProperty>>()
-        
+
         ResourceType.entries.forEach { resourceType ->
             if (resourceType != ResourceType.UNKNOWN) {
                 val resourceSchema = schema.path(resourceType.resourceName)
@@ -53,35 +53,52 @@ class TerraformSchemaLoader {
                 }
             }
         }
-        
+
         return result
     }
-    
+
     private fun extractProperties(schema: JsonNode): List<TerraformProperty> {
         val properties = mutableListOf<TerraformProperty>()
         val attributes = schema.path("block").path("attributes")
-        
+
         attributes.fields().forEach { (name, details) ->
             val type = when (details.path("type").asText()) {
                 "string" -> PropertyType.STRING
                 "number" -> PropertyType.NUMBER
                 "bool" -> PropertyType.BOOLEAN
-                else -> PropertyType.STRING // Default to string for complex types
+                else -> {
+                    complexPropertyType(details)
+                }
             }
-            
+
             properties.add(
                 TerraformProperty(
-                name = name,
-                type = type,
-                required = details.path("required").asBoolean(false),
-                deprecated = details.path("deprecated").asBoolean(false),
-                description = details.path("description").asText(""),
-                // We could potentially extract options for enum types from validation blocks
-                options = emptyList()
-            )
+                    name = name,
+                    type = type,
+                    required = details.path("required").asBoolean(false),
+                    deprecated = details.path("deprecated").asBoolean(false),
+                    description = details.path("description").asText(""),
+                    // We could potentially extract options for enum types from validation blocks
+                    options = emptyList()
+                )
             )
         }
-        
+
         return properties
     }
-} 
+
+    private fun complexPropertyType(details: JsonNode): PropertyType {
+        return when (details.path("type").toString()) {
+            "[\"map\",\"string\"]" -> PropertyType.MAP
+            "[\"set\",\"string\"]" -> PropertyType.SET
+            else -> {
+                // TODO actually complex property types
+                return PropertyType.STRING
+            }
+        }
+    }
+
+    private fun parseOtherPropertyTypes() {
+
+    }
+}

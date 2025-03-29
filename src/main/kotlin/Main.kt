@@ -26,6 +26,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
 import terraformbuilder.components.GithubUrlDialog
+import terraformbuilder.components.propertyEditorPanel
 import terraformbuilder.components.variableDialog
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser

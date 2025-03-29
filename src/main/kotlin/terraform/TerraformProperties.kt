@@ -19,7 +19,7 @@ data class TerraformProperty(
 )
 
 enum class PropertyType {
-    STRING, NUMBER, BOOLEAN, ENUM
+    STRING, NUMBER, BOOLEAN, ENUM, ARRAY, MAP, SET, JSON
 }
 
 // Map of block types to their available properties
@@ -38,14 +38,14 @@ object TerraformProperties {
         return try {
             val latestVersion = getAvailableVersions().firstOrNull()
                 ?: throw IllegalStateException("No AWS provider versions found")
-                
+
             val schema = schemaLoader.loadProviderSchema(latestVersion)
             // TODO support multiple schemas
             val resourceTypes = ResourceType.entries
             Pair(resourceTypes, schema.second)
         } catch (e: Exception) {
             println("Failed to load schema: ${e.message}")
-            Pair(emptyList(), fallbackProperties())
+            throw e
         }
     }
 
@@ -62,11 +62,5 @@ object TerraformProperties {
             println(e.message)
             emptyList()
         }
-    }
-    
-    private fun fallbackProperties(): Map<ResourceType, List<TerraformProperty>> {
-        return mapOf(
-            // ... existing hardcoded properties ...
-        )
     }
 } 

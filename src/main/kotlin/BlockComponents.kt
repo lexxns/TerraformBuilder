@@ -1,53 +1,43 @@
 package terraformbuilder
 
+// Add new imports
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import java.util.*
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
-import kotlin.math.PI
-
-// Add new imports
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
-import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
-import terraformbuilder.terraform.TerraformProperty
+import java.util.*
+import kotlin.math.*
 
 enum class ConnectionPointType {
     INPUT, OUTPUT
@@ -78,14 +68,14 @@ data class Block(
             _position = value
             updateConnectionPoints()
         }
-        
+
     var size: Offset
         get() = _size
         set(value) {
             _size = value
             updateConnectionPoints()
         }
-    
+
     // Returns the position of the specified connection point in dp
     fun getConnectionPointPosition(type: ConnectionPointType): Offset {
         return when (type) {
@@ -93,27 +83,27 @@ data class Block(
             ConnectionPointType.OUTPUT -> outputPosition
         }
     }
-    
+
     // Updates the connection point positions based on the block's position and size
     private fun updateConnectionPoints() {
         // For input: left edge, vertically centered
         // Position it slightly to the left to appear as part of the block
         inputPosition = _position + Offset(-6f, _size.y / 2f)
-        
+
         // For output: right edge, vertically centered
         // Position it slightly to the right to appear as part of the block
         outputPosition = _position + Offset(_size.x + 6f, _size.y / 2f)
-        
+
         // Print debug info
         println("Block $content position: $_position, size: $_size")
         println("Input at: $inputPosition, Output at: $outputPosition")
         println("--------------------")
     }
-    
+
     // Initialize default property values from TerraformProperties
     fun initializeDefaultProperties() {
         val terraformProps = TerraformProperties.getPropertiesForBlock(this)
-        
+
         terraformProps.forEach { prop ->
             // Only set if not already set and has a default value
             if (!properties.containsKey(prop.name) && prop.default != null) {
@@ -121,12 +111,12 @@ data class Block(
             }
         }
     }
-    
+
     // Set a property value
     fun setProperty(name: String, value: String) {
         properties[name] = value
     }
-    
+
     // Get a property value or default
     fun getProperty(name: String): String? {
         return properties[name]
@@ -153,12 +143,12 @@ data class Connection(
 ) {
     private val sourcePointType = ConnectionPointType.OUTPUT
     private val targetPointType = ConnectionPointType.INPUT
-    
+
     // Get start point position (source block's output) in dp
     fun getStartPosition(): Offset {
         return sourceBlock.getConnectionPointPosition(sourcePointType)
     }
-    
+
     // Get end point position (target block's input) in dp
     fun getEndPosition(): Offset {
         return targetBlock.getConnectionPointPosition(targetPointType)
@@ -209,7 +199,7 @@ class BlockState {
             _blocks[index].content = newContent
         }
     }
-    
+
     // Update a specific property for a block
     fun updateBlockProperty(blockId: String, propertyName: String, propertyValue: String) {
         val index = _blocks.indexOfFirst { it.id == blockId }
@@ -217,13 +207,13 @@ class BlockState {
             _blocks[index].setProperty(propertyName, propertyValue)
         }
     }
-    
+
     // Get a property value for a block
     fun getBlockProperty(blockId: String, propertyName: String): String? {
         val block = _blocks.find { it.id == blockId } ?: return null
         return block.getProperty(propertyName)
     }
-    
+
     // Get all properties for a block
     fun getBlockProperties(blockId: String): Map<String, String> {
         val block = _blocks.find { it.id == blockId } ?: return emptyMap()
@@ -247,16 +237,16 @@ class BlockState {
 
     fun startConnectionDrag(block: Block, pointType: ConnectionPointType) {
         println("BLOCKSTATE: Starting connection drag from ${block.content} with point type $pointType")
-        
+
         // Initialize a new drag state
         dragState.isActive = true
         dragState.sourceBlock = block
         dragState.sourcePointType = pointType
-        
+
         // Set the initial position to the connection point's position
         val connectionPointPosition = block.getConnectionPointPosition(pointType)
         dragState.currentPosition = connectionPointPosition
-        
+
         println("BLOCKSTATE: Connection drag initialized at $connectionPointPosition")
     }
 
@@ -270,11 +260,11 @@ class BlockState {
 
         // Position is already in dp
         val endPosition = position
-        
+
         // Debug the connection attempt
         println("Ending connection drag at position: $endPosition")
         println("Source block: ${dragState.sourceBlock!!.content}, point type: ${dragState.sourcePointType}")
-        
+
         // Find if there's a connection point near the end position
         val nearbyBlocks = _blocks.map { block ->
             val result = findNearestConnectionPoint(block, endPosition)
@@ -285,25 +275,27 @@ class BlockState {
             val validBlock = block.id != dragState.sourceBlock!!.id
             val validDistance = result.first // isNearby
             val compatibleTypes = result.second != dragState.sourcePointType
-            
-            println("Block ${block.content} valid? " +
-                "different block: $validBlock, " +
-                "nearby: $validDistance, " +
-                "compatible types: $compatibleTypes")
-            
+
+            println(
+                "Block ${block.content} valid? " +
+                        "different block: $validBlock, " +
+                        "nearby: $validDistance, " +
+                        "compatible types: $compatibleTypes"
+            )
+
             validBlock && validDistance && compatibleTypes
         }
 
         println("Found ${nearbyBlocks.size} nearby compatible blocks")
-        
+
         if (nearbyBlocks.isNotEmpty()) {
-            val (targetBlock, targetResult) = nearbyBlocks.minByOrNull { 
+            val (targetBlock, targetResult) = nearbyBlocks.minByOrNull {
                 val (_, result) = it
                 result.third // distance
             } ?: return
 
             println("Creating connection to ${targetBlock.content} with point type ${targetResult.second}")
-            
+
             // Determine source and target based on connection point types
             if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
                 // Source block's output to target block's input
@@ -323,23 +315,26 @@ class BlockState {
         dragState.sourceBlock = null
         dragState.sourcePointType = null
     }
-    
+
     // Helper function to find the nearest connection point on a block
     // Returns Triple(isNearby, connectionPointType, distance)
-    private fun findNearestConnectionPoint(block: Block, position: Offset): Triple<Boolean, ConnectionPointType, Float> {
+    private fun findNearestConnectionPoint(
+        block: Block,
+        position: Offset
+    ): Triple<Boolean, ConnectionPointType, Float> {
         val inputPosition = block.getConnectionPointPosition(ConnectionPointType.INPUT)
         val outputPosition = block.getConnectionPointPosition(ConnectionPointType.OUTPUT)
-        
+
         val inputDistance = (inputPosition - position).getDistance()
         val outputDistance = (outputPosition - position).getDistance()
-        
+
         val minDistance = minOf(inputDistance, outputDistance)
-        val nearestType = if (inputDistance < outputDistance) 
+        val nearestType = if (inputDistance < outputDistance)
             ConnectionPointType.INPUT else ConnectionPointType.OUTPUT
-            
+
         // Distance threshold in dp - increased to make connections easier
         val isNearby = minDistance < 30f
-        
+
         return Triple(isNearby, nearestType, minDistance)
     }
 
@@ -366,10 +361,10 @@ fun createBlock(
         content = content,
         resourceType = resourceType
     )
-    
+
     // Initialize default properties
     block.initializeDefaultProperties()
-    
+
     return block
 }
 
@@ -383,7 +378,7 @@ fun blockView(
     onConnectionDragStart: (Block, ConnectionPointType) -> Unit,
     onUpdateBlockSize: (String, Offset) -> Unit,
     onBlockSelected: (String) -> Unit = {},
-    isHovered: Boolean = false, 
+    isHovered: Boolean = false,
     activeDragState: ConnectionDragState? = null
 ) {
     var position by remember { mutableStateOf(block.position) }
@@ -392,26 +387,26 @@ fun blockView(
     val density = LocalDensity.current.density
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    
+
     // Track if we've just initiated a double-click
     var isDoubleClickJustTriggered by remember { mutableStateOf(false) }
     // Track if we should ignore the next focus loss
     var ignoreFocusLoss by remember { mutableStateOf(false) }
-    
+
     // Update our local position when the block's position changes externally
     LaunchedEffect(block.position) {
         position = block.position
     }
-    
+
     // Request focus when editing starts
     LaunchedEffect(isEditing) {
         if (isEditing) {
             println("BLOCK-FOCUS: Requesting focus for TextField in ${block.id}")
-            
+
             // Request focus after a small delay to let composition settle
             delay(100)
             focusRequester.requestFocus()
-            
+
             // Try again with a longer delay
             delay(200)
             if (isEditing) {
@@ -430,17 +425,17 @@ fun blockView(
     }
 
     // Determine if connection points should be shown
-    val showConnectionPoints = isHovered || 
-        (activeDragState != null && activeDragState.isActive && activeDragState.sourceBlock?.id != block.id)
-        
+    val showConnectionPoints = isHovered ||
+            (activeDragState != null && activeDragState.isActive && activeDragState.sourceBlock?.id != block.id)
+
     // If there's an active drag, determine which points to show
-    val showInputPoint = showConnectionPoints && 
-        (activeDragState == null || !activeDragState.isActive || 
-         activeDragState.sourcePointType == ConnectionPointType.OUTPUT)
-         
-    val showOutputPoint = showConnectionPoints && 
-        (activeDragState == null || !activeDragState.isActive || 
-         activeDragState.sourcePointType == ConnectionPointType.INPUT)
+    val showInputPoint = showConnectionPoints &&
+            (activeDragState == null || !activeDragState.isActive ||
+                    activeDragState.sourcePointType == ConnectionPointType.OUTPUT)
+
+    val showOutputPoint = showConnectionPoints &&
+            (activeDragState == null || !activeDragState.isActive ||
+                    activeDragState.sourcePointType == ConnectionPointType.INPUT)
 
     // The outermost Box that positions the block and handles size updates
     Box(
@@ -452,14 +447,14 @@ fun blockView(
                     coordinates.size.width / density,
                     coordinates.size.height / density
                 )
-                
+
                 if (block.size != size) {
                     onUpdateBlockSize(block.id, size)
                 }
             }
     ) {
         // Use a fixed stack order with zIndex to ensure proper layering
-        
+
         // First, draw both connection points if needed (they should appear behind the block)
         if (showInputPoint) {
             Box(
@@ -477,7 +472,7 @@ fun blockView(
                 )
             }
         }
-        
+
         if (showOutputPoint) {
             Box(
                 modifier = Modifier
@@ -518,7 +513,7 @@ fun blockView(
                 // Handle clicks directly at the block level
                 .pointerInput("tap-detection") {
                     detectTapGestures(
-                        onTap = { 
+                        onTap = {
                             // Only process single-click if not editing and not right after double-click
                             if (!isEditing && !isDoubleClickJustTriggered) {
                                 println("BLOCK-CLICK: Selected block ${block.id}")
@@ -548,9 +543,9 @@ fun blockView(
                                 onRename(textFieldValue.text)
                             }
                         },
-                        onDragEnd = { 
+                        onDragEnd = {
                             println("BLOCK-DRAG-END: Ended dragging block ${block.id}")
-                            onDragEnd(position) 
+                            onDragEnd(position)
                         },
                         onDrag = { change, dragAmount ->
                             change.consume()
@@ -578,7 +573,7 @@ fun blockView(
                         .zIndex(100f)
                         .onFocusChanged { focusState ->
                             println("BLOCK-FOCUS: Focus state changed to: ${focusState.isFocused}, ignoreFocusLoss=$ignoreFocusLoss")
-                            
+
                             if (!focusState.isFocused && isEditing) {
                                 if (ignoreFocusLoss) {
                                     // First focus loss after starting edit - ignore it
@@ -625,26 +620,37 @@ fun connectionPointView(
     onConnectionStart: () -> Unit
 ) {
     var isHovered by remember { mutableStateOf(false) }
-    var isPressed by remember { mutableStateOf(false) } 
-    
+    var isPressed by remember { mutableStateOf(false) }
+
     // Use a half-circle design attached to the node
     Box(
         modifier = Modifier
             .size(12.dp, 20.dp) // Slightly smaller width for a cleaner look
             .background(
                 color = when (type) {
-                    ConnectionPointType.INPUT -> if (isPressed) Color.Green.copy(alpha = 1f) 
-                                              else if (isHovered) Color.Green.copy(alpha = 0.9f) 
-                                              else Color.Green.copy(alpha = 0.8f)
-                    ConnectionPointType.OUTPUT -> if (isPressed) Color.Red.copy(alpha = 1f) 
-                                               else if (isHovered) Color.Red.copy(alpha = 0.9f) 
-                                               else Color.Red.copy(alpha = 0.8f)
+                    ConnectionPointType.INPUT -> if (isPressed) Color.Green.copy(alpha = 1f)
+                    else if (isHovered) Color.Green.copy(alpha = 0.9f)
+                    else Color.Green.copy(alpha = 0.8f)
+
+                    ConnectionPointType.OUTPUT -> if (isPressed) Color.Red.copy(alpha = 1f)
+                    else if (isHovered) Color.Red.copy(alpha = 0.9f)
+                    else Color.Red.copy(alpha = 0.8f)
                 },
                 shape = when (type) {
                     // Half circle for input (flat side on right)
-                    ConnectionPointType.INPUT -> RoundedCornerShape(topStart = 50f, bottomStart = 50f, topEnd = 0f, bottomEnd = 0f)
+                    ConnectionPointType.INPUT -> RoundedCornerShape(
+                        topStart = 50f,
+                        bottomStart = 50f,
+                        topEnd = 0f,
+                        bottomEnd = 0f
+                    )
                     // Half circle for output (flat side on left)
-                    ConnectionPointType.OUTPUT -> RoundedCornerShape(topStart = 0f, bottomStart = 0f, topEnd = 50f, bottomEnd = 50f)
+                    ConnectionPointType.OUTPUT -> RoundedCornerShape(
+                        topStart = 0f,
+                        bottomStart = 0f,
+                        topEnd = 50f,
+                        bottomEnd = 50f
+                    )
                 }
             )
             .border(
@@ -652,27 +658,37 @@ fun connectionPointView(
                 color = Color.Black,
                 shape = when (type) {
                     // Half circle for input (flat side on right)
-                    ConnectionPointType.INPUT -> RoundedCornerShape(topStart = 50f, bottomStart = 50f, topEnd = 0f, bottomEnd = 0f)
+                    ConnectionPointType.INPUT -> RoundedCornerShape(
+                        topStart = 50f,
+                        bottomStart = 50f,
+                        topEnd = 0f,
+                        bottomEnd = 0f
+                    )
                     // Half circle for output (flat side on left)
-                    ConnectionPointType.OUTPUT -> RoundedCornerShape(topStart = 0f, bottomStart = 0f, topEnd = 50f, bottomEnd = 50f)
+                    ConnectionPointType.OUTPUT -> RoundedCornerShape(
+                        topStart = 0f,
+                        bottomStart = 0f,
+                        topEnd = 50f,
+                        bottomEnd = 50f
+                    )
                 }
             )
             // Support both click and drag with consistent visual feedback
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onPress = { 
+                    onPress = {
                         isPressed = true
                         isHovered = true
-                        
+
                         // This is critical - immediately start connection on press
                         println("CONNECTION POINT: Starting connection - Press detected on $type")
                         onConnectionStart()
-                        
+
                         // Wait for release
                         if (tryAwaitRelease()) {
                             println("CONNECTION POINT: Released on $type")
                         }
-                        
+
                         isPressed = false
                         isHovered = false
                     }
@@ -684,11 +700,11 @@ fun connectionPointView(
                     while (true) {
                         val event = awaitPointerEvent()
                         // Check if the pointer is over this connection point
-                        val isPointerOver = event.changes.any { 
+                        val isPointerOver = event.changes.any {
                             it.position.x >= 0 && it.position.y >= 0 &&
-                            it.position.x <= size.width && it.position.y <= size.height
+                                    it.position.x <= size.width && it.position.y <= size.height
                         }
-                        
+
                         // Update hover state based on pointer position
                         if (isPointerOver != isHovered && !isPressed) {
                             isHovered = isPointerOver
@@ -707,13 +723,13 @@ fun connectionCanvas(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current.density
-    
+
     Canvas(modifier = modifier.fillMaxSize()) {
         // Convert dp to pixels at the time of drawing
-        val dpToPx: (Offset) -> Offset = { dp -> 
+        val dpToPx: (Offset) -> Offset = { dp ->
             Offset(dp.x * density, dp.y * density)
         }
-        
+
         // Draw permanent connections
         connections.forEach { connection ->
             val startPos = dpToPx(connection.getStartPosition())
@@ -724,26 +740,26 @@ fun connectionCanvas(
         // Draw connection being dragged
         if (dragState.isActive && dragState.sourceBlock != null && dragState.sourcePointType != null) {
             println("Drawing active connection: ${dragState.sourceBlock!!.content} from ${dragState.sourcePointType} to ${dragState.currentPosition}")
-            
+
             val sourcePoint = dpToPx(
                 dragState.sourceBlock!!.getConnectionPointPosition(dragState.sourcePointType!!)
             )
             val targetPoint = dpToPx(dragState.currentPosition)
-            
+
             // Draw from source to current position
             if (dragState.sourcePointType == ConnectionPointType.OUTPUT) {
                 drawConnection(sourcePoint, targetPoint)
             } else {
                 drawConnection(targetPoint, sourcePoint)
             }
-            
+
             // Draw little circle at current drag position for debugging
             drawCircle(
                 color = Color.Blue.copy(alpha = 0.5f),
                 radius = 5f,
                 center = targetPoint
             )
-            
+
             // Highlight potential connection points
             blocks.forEach { block ->
                 // Skip the block we're dragging from
@@ -753,33 +769,33 @@ fun connectionCanvas(
                     } else {
                         ConnectionPointType.OUTPUT
                     }
-                    
+
                     val connectablePoint = block.getConnectionPointPosition(connectablePointType)
                     val distance = (dragState.currentPosition - connectablePoint).getDistance()
-                    
+
                     // If we're close to a valid connection point, highlight it
                     if (distance < 30f) {
                         val pointPx = dpToPx(connectablePoint)
                         drawCircle(
-                            color = if (connectablePointType == ConnectionPointType.INPUT) 
+                            color = if (connectablePointType == ConnectionPointType.INPUT)
                                 Color.Green.copy(alpha = 0.5f) else Color.Red.copy(alpha = 0.5f),
                             radius = 15f,
                             center = pointPx
                         )
-                        
+
                         // Draw dotted guide line to help with alignment
                         val dashLength = 5f
                         val gapLength = 5f
                         val totalLength = (pointPx - targetPoint).getDistance()
                         val angle = atan2(pointPx.y - targetPoint.y, pointPx.x - targetPoint.x)
-                        
+
                         var distance = 0f
                         while (distance < totalLength) {
                             val startX = targetPoint.x + cos(angle) * distance
                             val startY = targetPoint.y + sin(angle) * distance
                             val endX = targetPoint.x + cos(angle) * (distance + dashLength).coerceAtMost(totalLength)
                             val endY = targetPoint.y + sin(angle) * (distance + dashLength).coerceAtMost(totalLength)
-                            
+
                             drawLine(
                                 color = Color.Gray.copy(alpha = 0.5f),
                                 start = Offset(startX, startY),
@@ -787,7 +803,7 @@ fun connectionCanvas(
                                 strokeWidth = 1f,
                                 cap = StrokeCap.Round
                             )
-                            
+
                             distance += dashLength + gapLength
                         }
                     }
@@ -898,401 +914,3 @@ operator fun Offset.minus(other: Offset): Offset {
     return Offset(this.x - other.x, this.y - other.y)
 }
 
-// Property Editor Panel Composable
-@Composable
-fun propertyEditorPanel(
-    block: Block,
-    onPropertyChange: (String, String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    println("PROPERTY-PANEL: Showing properties for block ${block.id} with content '${block.content}'")
-    
-    val blockContent = block.content
-    val blockKey = remember(block.id) { block.id }
-    
-    // Get all available properties
-    val allProperties = TerraformProperties.getPropertiesForBlock(block)
-    
-    // Organize properties into categories
-    val (requiredProps, optionalProps) = allProperties.partition { it.required }
-    
-    // Further split optional properties into those with values and those without
-    val optionalWithValues = optionalProps.filter { prop ->
-        block.getProperty(prop.name)?.isNotEmpty() == true
-    }.sortedBy { it.name }
-    
-    val optionalWithoutValues = optionalProps.filter { prop ->
-        block.getProperty(prop.name)?.isNotEmpty() != true
-    }.sortedBy { it.name }
-    
-    // Track which optional properties are being shown
-    var shownOptionalProps by remember { mutableStateOf(optionalWithValues.map { it.name }.toSet()) }
-    
-    Card(
-        modifier = modifier
-            .widthIn(min = 320.dp, max = 400.dp),
-        elevation = 4.dp,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-        ) {
-            // Title with resource icon
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(
-                            color = when (block.type) {
-                                BlockType.COMPUTE -> Color(0xFF4C97FF)
-                                BlockType.DATABASE -> Color(0xFFFFAB19)
-                                BlockType.NETWORKING -> Color(0xFFFF8C1A)
-                                BlockType.SECURITY -> Color(0xFF40BF4A)
-                                BlockType.INTEGRATION -> Color(0xFF4C97FF)
-                                BlockType.MONITORING -> Color(0xFFFFAB19)
-                            },
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .border(1.dp, Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                )
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Text(
-                    text = "$blockContent properties",
-                    style = MaterialTheme.typography.h6
-                )
-            }
-            
-            if (allProperties.isEmpty()) {
-                Text(
-                    text = "No properties available for $blockContent.",
-                    style = MaterialTheme.typography.body2
-                )
-            } else {
-                // Required properties first (sorted alphabetically)
-                requiredProps.sortedBy { it.name }.forEach { property ->
-                    PropertyEditor(
-                        property = property,
-                        block = block,
-                        blockKey = blockKey,
-                        onPropertyChange = onPropertyChange
-                    )
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
-                }
-                
-                // Optional properties that have values
-                optionalWithValues.forEach { property ->
-                    PropertyEditor(
-                        property = property,
-                        block = block,
-                        blockKey = blockKey,
-                        onPropertyChange = onPropertyChange,
-                        onRemove = { 
-                            shownOptionalProps = shownOptionalProps - property.name
-                            onPropertyChange(property.name, "") // Clear the value
-                        }
-                    )
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
-                }
-                
-                // Show additional optional properties that have been added
-                optionalWithoutValues
-                    .filter { prop -> prop.name in shownOptionalProps }
-                    .forEach { property ->
-                        PropertyEditor(
-                            property = property,
-                            block = block,
-                            blockKey = blockKey,
-                            onPropertyChange = onPropertyChange,
-                            onRemove = { 
-                                shownOptionalProps = shownOptionalProps - property.name
-                                onPropertyChange(property.name, "") // Clear the value
-                            }
-                        )
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
-                    }
-                
-                // Add Property button (only show if there are unshown optional properties)
-                if (optionalWithoutValues.any { it.name !in shownOptionalProps }) {
-                    var showDropdown by remember { mutableStateOf(false) }
-                    
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        TextButton(
-                            onClick = { showDropdown = true },
-                            modifier = Modifier.align(Alignment.Center)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Add property"
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Property")
-                        }
-                        
-                        DropdownMenu(
-                            expanded = showDropdown,
-                            onDismissRequest = { showDropdown = false }
-                        ) {
-                            // Split properties into non-deprecated and deprecated
-                            val (nonDeprecated, deprecated) = optionalWithoutValues
-                                .filter { it.name !in shownOptionalProps }
-                                .partition { !it.deprecated }
-                            
-                            // Show non-deprecated properties first
-                            nonDeprecated.forEach { property ->
-                                DropdownMenuItem(
-                                    onClick = {
-                                        shownOptionalProps = shownOptionalProps + property.name
-                                        showDropdown = false
-                                    }
-                                ) {
-                                    Text(property.name)
-                                }
-                            }
-                            
-                            // Add a divider if we have both types
-                            if (nonDeprecated.isNotEmpty() && deprecated.isNotEmpty()) {
-                                Divider(modifier = Modifier.padding(vertical = 4.dp))
-                            }
-                            
-                            // Show deprecated properties
-                            deprecated.forEach { property ->
-                                DropdownMenuItem(
-                                    onClick = {
-                                        shownOptionalProps = shownOptionalProps + property.name
-                                        showDropdown = false
-                                    }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = property.name,
-                                            color = Color.Gray
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "(deprecated)",
-                                            style = MaterialTheme.typography.caption,
-                                            color = Color.Gray
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PropertyEditor(
-    property: TerraformProperty,
-    block: Block,
-    blockKey: String,
-    onPropertyChange: (String, String) -> Unit,
-    onRemove: (() -> Unit)? = null
-) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "${property.name}${if (property.required) " *" else ""}",
-                    style = MaterialTheme.typography.subtitle2,
-                    // Grey out deprecated properties
-                    color = if (property.deprecated) Color.Gray else LocalContentColor.current
-                )
-                
-                if (property.required) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "(required)",
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.primary
-                    )
-                }
-                
-                // Add deprecated indicator
-                if (property.deprecated) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "(deprecated)",
-                        style = MaterialTheme.typography.caption,
-                        color = Color.Gray
-                    )
-                }
-            }
-            
-            // Show remove button for optional properties
-            if (onRemove != null) {
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove property",
-                        tint = MaterialTheme.colors.error
-                    )
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        // Property editor based on type
-        when (property.type) {
-            PropertyType.STRING -> {
-                // Use a key combining block ID and property name to reset state
-                key(blockKey, property.name) {
-                    var value by remember { mutableStateOf(block.getProperty(property.name) ?: property.default ?: "") }
-                    
-                    // Update value when currentValue changes (e.g., from outside)
-                    LaunchedEffect(block.getProperty(property.name)) {
-                        value = block.getProperty(property.name) ?: property.default ?: ""
-                    }
-                    
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { 
-                            value = it
-                            onPropertyChange(property.name, it)
-                        },
-                        label = { Text(property.description) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            }
-            
-            PropertyType.NUMBER -> {
-                // Use a key combining block ID and property name to reset state
-                key(blockKey, property.name) {
-                    var value by remember { mutableStateOf(block.getProperty(property.name) ?: property.default ?: "") }
-                    
-                    // Update value when currentValue changes (e.g., from outside)
-                    LaunchedEffect(block.getProperty(property.name)) {
-                        value = block.getProperty(property.name) ?: property.default ?: ""
-                    }
-                    
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { newValue ->
-                            // Only allow numbers
-                            if (newValue.isEmpty() || newValue.all { it.isDigit() || it == '.' }) {
-                                value = newValue
-                                onPropertyChange(property.name, newValue)
-                            }
-                        },
-                        label = { Text(property.description) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            }
-            
-            PropertyType.BOOLEAN -> {
-                // Use a key combining block ID and property name to reset state
-                key(blockKey, property.name) {
-                    var checked by remember { mutableStateOf(block.getProperty(property.name)?.lowercase(Locale.getDefault()) == "true") }
-                    
-                    // Update checked state when currentValue changes (e.g., from outside)
-                    LaunchedEffect(block.getProperty(property.name)) {
-                        checked = block.getProperty(property.name)?.lowercase(Locale.getDefault()) == "true"
-                    }
-                    
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Switch(
-                            checked = checked,
-                            onCheckedChange = { 
-                                checked = it
-                                onPropertyChange(property.name, it.toString())
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colors.primary
-                            )
-                        )
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        Text(
-                            text = property.description,
-                            style = MaterialTheme.typography.body2
-                        )
-                    }
-                }
-            }
-            
-            PropertyType.ENUM -> {
-                // Use a key combining block ID and property name to reset state
-                key(blockKey, property.name) {
-                    // State for dropdown
-                    var expanded by remember { mutableStateOf(false) }
-                    var selectedOption by remember { mutableStateOf(block.getProperty(property.name) ?: property.default ?: "") }
-                    
-                    // Update selected option when currentValue changes (e.g., from outside)
-                    LaunchedEffect(block.getProperty(property.name)) {
-                        selectedOption = block.getProperty(property.name) ?: property.default ?: ""
-                    }
-                    
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = selectedOption,
-                            onValueChange = { },
-                            label = { Text(property.description) },
-                            readOnly = true,
-                            trailingIcon = {
-                                IconButton(onClick = { expanded = !expanded }) {
-                                    Icon(
-                                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = if (expanded) "Collapse" else "Expand"
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { expanded = true }
-                        )
-                        
-                        // Dropdown menu for enum values
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false },
-                            modifier = Modifier
-                                .fillMaxWidth(0.9f)
-                        ) {
-                            property.options.forEach { option ->
-                                DropdownMenuItem(
-                                    onClick = {
-                                        selectedOption = option
-                                        expanded = false
-                                        onPropertyChange(property.name, option)
-                                    }
-                                ) {
-                                    Text(text = option)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
