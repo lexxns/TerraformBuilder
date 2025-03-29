@@ -31,7 +31,7 @@ import terraformbuilder.github.*
 import terraformbuilder.terraform.*
 import kotlinx.coroutines.launch
 import terraformbuilder.components.GithubUrlDialog
-import terraformbuilder.components.VariableDialog
+import terraformbuilder.components.variableDialog
 
 // Library block creation helper
 private fun createLibraryBlock(type: BlockType, resourceType: ResourceType): Block {
@@ -194,7 +194,7 @@ fun app() {
     }
 
     if (showVariablesDialog) {
-        VariableDialog(
+        variableDialog(
             onDismiss = { showVariablesDialog = false },
             variables = variableState.variables,
             onAddVariable = { variableState.addVariable(it) },

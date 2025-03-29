@@ -18,7 +18,7 @@ import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.terraform.VariableType
 
 @Composable
-fun VariableDialog(
+fun variableDialog(
     onDismiss: () -> Unit,
     variables: List<TerraformVariable>,
     onAddVariable: (TerraformVariable) -> Unit,
@@ -68,7 +68,7 @@ fun VariableDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(variables) { variable ->
-                        VariableListItem(
+                        variableListItem(
                             variable = variable,
                             onEdit = { editingVariable = variable },
                             onDelete = { onRemoveVariable(variable.name) }
@@ -89,7 +89,7 @@ fun VariableDialog(
 
     // Add/Edit Variable Dialog
     if (showAddDialog || editingVariable != null) {
-        VariableEditDialog(
+        variableEditDialog(
             variable = editingVariable,
             onDismiss = {
                 showAddDialog = false
@@ -109,7 +109,7 @@ fun VariableDialog(
 }
 
 @Composable
-private fun VariableListItem(
+private fun variableListItem(
     variable: TerraformVariable,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -154,7 +154,7 @@ private fun VariableListItem(
 }
 
 @Composable
-private fun VariableEditDialog(
+private fun variableEditDialog(
     variable: TerraformVariable? = null,
     onDismiss: () -> Unit,
     onSave: (TerraformVariable) -> Unit
@@ -186,7 +186,7 @@ private fun VariableEditDialog(
                 // Name field
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { 
+                    onValueChange = {
                         name = it
                         nameError = null
                     },
@@ -223,7 +223,7 @@ private fun VariableEditDialog(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
                 ) {
-                    VariableType.values().forEach { variableType ->
+                    VariableType.entries.forEach { variableType ->
                         DropdownMenuItem(
                             onClick = {
                                 type = variableType
