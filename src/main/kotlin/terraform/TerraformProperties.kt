@@ -1,4 +1,7 @@
-package terraformbuilder
+package terraformbuilder.terraform
+
+import terraformbuilder.Block
+import terraformbuilder.ResourceType
 
 /**
  * Represents a property for a Terraform resource

@@ -1,7 +1,8 @@
-package terraformbuilder
+package terraformbuilder.terraform
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import terraformbuilder.ResourceType
 import java.io.InputStream
 
 class TerraformSchemaLoader {
@@ -68,7 +69,8 @@ class TerraformSchemaLoader {
                 else -> PropertyType.STRING // Default to string for complex types
             }
             
-            properties.add(TerraformProperty(
+            properties.add(
+                TerraformProperty(
                 name = name,
                 type = type,
                 required = details.path("required").asBoolean(false),
@@ -76,7 +78,8 @@ class TerraformSchemaLoader {
                 description = details.path("description").asText(""),
                 // We could potentially extract options for enum types from validation blocks
                 options = emptyList()
-            ))
+            )
+            )
         }
         
         return properties

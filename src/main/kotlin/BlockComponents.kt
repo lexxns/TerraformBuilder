@@ -45,6 +45,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import terraformbuilder.terraform.PropertyType
+import terraformbuilder.terraform.TerraformProperties
+import terraformbuilder.terraform.TerraformProperty
 
 enum class ConnectionPointType {
     INPUT, OUTPUT

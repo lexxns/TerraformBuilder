@@ -31,6 +31,7 @@ import terraformbuilder.github.*
 import terraformbuilder.terraform.*
 import kotlinx.coroutines.launch
 import terraformbuilder.components.GithubUrlDialog
+import terraformbuilder.components.VariableDialog
 
 // Library block creation helper
 private fun createLibraryBlock(type: BlockType, resourceType: ResourceType): Block {
@@ -118,6 +119,9 @@ fun app() {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
+    var showVariablesDialog by remember { mutableStateOf(false) }
+    val variableState = remember { VariableState() }
+    
     if (showGithubDialog) {
         GithubUrlDialog(
             onDismiss = { 
@@ -164,8 +168,8 @@ fun app() {
                                 val row = index / 3
                                 val col = index % 3
                                 val position = Offset(
-                                    100f + col * 300f,
-                                    100f + row * 200f
+                                    50f + col * 100f,
+                                    50f + row * 50f
                                 )
                                 println("APP: Adding block ${block.content} at position $position")
                                 blockState.addBlock(block.copy(_position = position))
@@ -189,6 +193,16 @@ fun app() {
         )
     }
 
+    if (showVariablesDialog) {
+        VariableDialog(
+            onDismiss = { showVariablesDialog = false },
+            variables = variableState.variables,
+            onAddVariable = { variableState.addVariable(it) },
+            onRemoveVariable = { variableState.removeVariable(it) },
+            onUpdateVariable = { name, variable: TerraformVariable -> variableState.updateVariable(name, variable) }
+        )
+    }
+
     MaterialTheme {
         Row(modifier = Modifier.fillMaxSize()) {
             // Block Library Panel
@@ -207,7 +221,8 @@ fun app() {
                         resourceType = resourceType
                     )
                 },
-                onGithubClick = { showGithubDialog = true }
+                onGithubClick = { showGithubDialog = true },
+                onVariablesClick = { showVariablesDialog = true }
             )
 
             // Workspace Area
@@ -285,7 +300,8 @@ fun app() {
 fun blockLibraryPanel(
     modifier: Modifier = Modifier,
     onBlockSelected: (Block) -> Unit,
-    onGithubClick: () -> Unit
+    onGithubClick: () -> Unit,
+    onVariablesClick: () -> Unit
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<String>()) }
 
@@ -300,9 +316,18 @@ fun blockLibraryPanel(
                 onClick = onGithubClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 8.dp)
             ) {
                 Text("Load from GitHub")
+            }
+            
+            Button(
+                onClick = onVariablesClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text("Manage Variables")
             }
         }
 
