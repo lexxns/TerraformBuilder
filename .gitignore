@@ -47,3 +47,6 @@ bin/
 src/main/kotlin/resources/terraform.aws/*
 src/main/kotlin/terraformbuilder/ResourceType.kt
 schema.json
+/gradle/
+/.run/
+/.cursorrules
