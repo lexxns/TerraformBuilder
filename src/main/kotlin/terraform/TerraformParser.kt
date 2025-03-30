@@ -172,7 +172,14 @@ class TerraformParser {
                 when (value) {
                     is Map<*, *> -> "{${value.entries.joinToString(", ") { "${it.key} = ${it.value}" }}}"
                     is List<*> -> "[${value.joinToString(", ")}]"
-                    else -> value.toString()
+                    else -> {
+                        // Ignore compiler, this CAN be null
+                        if (value == null) {
+                            ""
+                        } else {
+                            value.toString()
+                        }
+                    }
                 }
             }
 
