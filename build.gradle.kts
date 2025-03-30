@@ -17,6 +17,13 @@ repositories {
     google()
 }
 
+// Configure Kotlin JVM target
+kotlin {
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
 dependencies {
     // Note, if you develop a library, you should use compose.desktop.common.
     // compose.desktop.currentOs should be used in launcher-sourceSet
@@ -29,6 +36,30 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("org.slf4j:slf4j-simple:2.0.17")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+
+    // JUnit 4 dependencies
+    testImplementation("junit:junit:4.13.2")
+
+    // Use kotlin test with JUnit 4
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.8.20")
+
+    // Add compose testing dependencies
+    testImplementation(compose.desktop.uiTestJUnit4)
+    testImplementation(compose.desktop.currentOs)
+}
+
+// Configure tests to use JUnit 4
+tasks.test {
+    useJUnit()
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
+}
+
+// Configure Java compatibility for the project
+tasks.withType<JavaCompile>().configureEach {
+    sourceCompatibility = JavaVersion.VERSION_21.toString()
+    targetCompatibility = JavaVersion.VERSION_21.toString()
 }
 
 compose.desktop {
@@ -85,7 +116,8 @@ tasks.register<Task>("generateTerraformSchemas") {
             // Create terraform config file
             val mainTf = File(workDir, "main.tf")
             try {
-                mainTf.writeText("""
+                mainTf.writeText(
+                    """
                     terraform {
                       required_providers {
                         aws = {
@@ -94,7 +126,8 @@ tasks.register<Task>("generateTerraformSchemas") {
                         }
                       }
                     }
-                """.trimIndent())
+                """.trimIndent()
+                )
                 logger.lifecycle("Created Terraform config file: ${mainTf.absolutePath}")
             } catch (e: Exception) {
                 logger.error("Failed to create Terraform config file: ${e.message}")

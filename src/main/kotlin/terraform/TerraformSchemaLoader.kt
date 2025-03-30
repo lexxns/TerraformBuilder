@@ -92,6 +92,9 @@ class TerraformSchemaLoader {
             "[\"map\",\"string\"]" -> PropertyType.MAP
             "[\"set\",\"string\"]" -> PropertyType.SET
             else -> {
+                if (details.path("type").toString().contains("policy")) {
+                    return PropertyType.JSON
+                }
                 // TODO actually complex property types
                 return PropertyType.STRING
             }
