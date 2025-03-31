@@ -52,7 +52,7 @@ class GitHubToTerraformTest {
         // Verify specific resources were found
         val lambdaResource = allResources.find { it.type == "aws_lambda_function" }
         assertNotNull(lambdaResource, "Should find Lambda function resource")
-        assertEquals("this", lambdaResource.name)
+        assertEquals("local_zipfile", lambdaResource.name)
 
         val apiGatewayResource = allResources.find { it.type == "aws_api_gateway_rest_api" }
         assertNotNull(apiGatewayResource, "Should find API Gateway resource")
@@ -98,8 +98,26 @@ class GitHubToTerraformTest {
             "Deployment block should have rest_api_id property"
         )
         assertTrue(
-            deploymentBlock.properties.containsKey("stage_name"),
-            "Deployment block should have stage_name property"
+            deploymentBlock.properties.containsKey("depends_on"),
+            "Deployment block should have depends_on property"
+        )
+
+        // Check for the stage block
+        val stageBlock = blockState.blocks.find {
+            it.resourceType == ResourceType.API_GATEWAY_STAGE
+        }
+        assertNotNull(stageBlock, "Should create API Gateway Stage block")
+        assertTrue(
+            stageBlock.properties.containsKey("stage_name"),
+            "Stage block should have stage_name property"
+        )
+        assertTrue(
+            stageBlock.properties.containsKey("rest_api_id"),
+            "Stage block should have rest_api_id property"
+        )
+        assertTrue(
+            stageBlock.properties.containsKey("deployment_id"),
+            "Stage block should have deployment_id property"
         )
     }
 } 
