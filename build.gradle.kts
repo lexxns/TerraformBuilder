@@ -36,6 +36,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("org.slf4j:slf4j-simple:2.0.17")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+    implementation("org.json:json:20240303")
 
     // JUnit 4 dependencies
     testImplementation("junit:junit:4.13.2")

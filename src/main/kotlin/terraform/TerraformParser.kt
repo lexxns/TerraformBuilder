@@ -5,6 +5,7 @@ import terraformbuilder.Block
 import terraformbuilder.BlockType
 import terraformbuilder.ResourceType
 import java.io.StringReader
+import org.json.JSONObject
 
 data class TerraformResource(
     val type: String,
@@ -170,7 +171,20 @@ class TerraformParser {
             // Convert properties to string values for our Block class
             val stringProperties = resource.properties.mapValues { (_, value) ->
                 when (value) {
-                    is Map<*, *> -> "{${value.entries.joinToString(", ") { "${it.key} = ${it.value}" }}}"
+                    is Map<*, *> -> {
+                        // For JSON-like structures, convert to proper JSON string
+                        if (value.keys.any { it.toString().contains("policy") || it.toString().contains("document") }) {
+                            try {
+                                // Convert the map to a JSONObject and get its string representation
+                                JSONObject(value).toString(2) // Use 2 spaces for indentation
+                            } catch (e: Exception) {
+                                // If JSON conversion fails, fall back to the original toString
+                                value.toString()
+                            }
+                        } else {
+                            "{${value.entries.joinToString(", ") { "${it.key} = ${it.value}" }}}"
+                        }
+                    }
                     is List<*> -> "[${value.joinToString(", ")}]"
                     else -> {
                         // Ignore compiler, this CAN be null

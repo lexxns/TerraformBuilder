@@ -14,7 +14,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import org.json.JSONObject
 import terraformbuilder.Block
 import terraformbuilder.BlockType
 import terraformbuilder.terraform.PropertyType
@@ -331,99 +335,54 @@ private fun jsonPropertyEditor(
     currentValue: String,
     onValueChange: (String) -> Unit
 ) {
-    // Use a mutable state to hold the JSON items
-    var jsonItems by remember { mutableStateOf(mutableMapOf<String, String>()) }
+    var jsonText by remember { mutableStateOf(currentValue) }
+    var jsonError by remember { mutableStateOf<String?>(null) }
 
-    // Initialize jsonItems from currentValue
-    LaunchedEffect(currentValue) {
-        jsonItems = try {
-            if (currentValue.isBlank()) mutableMapOf()
-            else {
-                currentValue.trim('{', '}')
-                    .split(",")
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-                    .associate { pair ->
-                        val (key, value) = pair.split("=", limit = 2)
-                        key.trim() to value.trim()
-                    }.toMutableMap()
+    // Validate JSON when text changes
+    LaunchedEffect(jsonText) {
+        try {
+            if (jsonText.isBlank()) {
+                jsonError = null
+                onValueChange("{}")
+                return@LaunchedEffect
             }
+
+            // Try to parse as JSON to validate
+            org.json.JSONObject(jsonText)
+            jsonError = null
+            onValueChange(jsonText)
         } catch (e: Exception) {
-            mutableMapOf()
+            jsonError = "Invalid JSON: ${e.message}"
         }
     }
 
     Column {
-        jsonItems.forEach { (key, value) ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Key field
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { newKey ->
-                        if (newKey.isNotEmpty()) {
-                            jsonItems[newKey] = value
-                            if (newKey != key) {
-                                jsonItems.remove(key)
-                            }
-                            onValueChange(jsonItems.entries.joinToString(", ", "{", "}") {
-                                "${it.key} = ${it.value}"
-                            })
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Key") },
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Value field
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { newValue ->
-                        jsonItems[key] = newValue
-                        onValueChange(jsonItems.entries.joinToString(", ", "{", "}") {
-                            "${it.key} = ${it.value}"
-                        })
-                    },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Value") },
-                    singleLine = true
-                )
-
-                IconButton(
-                    onClick = {
-                        jsonItems.remove(key)
-                        onValueChange(jsonItems.entries.joinToString(", ", "{", "}") {
-                            "${it.key} = ${it.value}"
-                        })
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove pair",
-                        tint = MaterialTheme.colors.error
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
+        // Show error if any
+        jsonError?.let { error ->
+            Text(
+                text = error,
+                color = MaterialTheme.colors.error,
+                style = MaterialTheme.typography.caption,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
         }
 
-        TextButton(
-            onClick = {
-                jsonItems["new_key"] = "new_value"
-                onValueChange(jsonItems.entries.joinToString(", ", "{", "}") {
-                    "${it.key} = ${it.value}"
-                })
-            },
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        ) {
-            Text("Add Key-Value Pair")
-        }
+        // JSON editor
+        OutlinedTextField(
+            value = jsonText,
+            onValueChange = { jsonText = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            textStyle = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            ),
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                focusedBorderColor = if (jsonError == null) MaterialTheme.colors.primary else MaterialTheme.colors.error,
+                unfocusedBorderColor = if (jsonError == null) MaterialTheme.colors.onSurface else MaterialTheme.colors.error
+            )
+        )
     }
 }
 
