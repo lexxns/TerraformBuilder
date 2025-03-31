@@ -14,17 +14,219 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.json.JSONObject
 import terraformbuilder.Block
 import terraformbuilder.BlockType
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty
 import java.util.*
+
+@Composable
+private fun jsonPropertyEditor(
+    currentValue: String,
+    onValueChange: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(currentValue) }
+    var jsonError by remember { mutableStateOf<String?>(null) }
+
+    // Update text when currentValue changes from outside
+    LaunchedEffect(currentValue) {
+        if (currentValue != text) {
+            text = currentValue
+        }
+    }
+
+    // Validate JSON when text changes
+    LaunchedEffect(text) {
+        try {
+            if (text.isBlank()) {
+                jsonError = null
+                onValueChange("{}")
+                return@LaunchedEffect
+            }
+
+            // Try to parse as JSON to validate
+            org.json.JSONObject(text)
+            jsonError = null
+            onValueChange(text)
+        } catch (e: Exception) {
+            jsonError = "Invalid JSON: ${e.message}"
+        }
+    }
+
+    // Create a visual transformation for JSON syntax highlighting
+    val jsonSyntaxHighlighting = VisualTransformation { inputText ->
+        val annotatedString = buildAnnotatedString {
+            var currentIndex = 0
+
+            while (currentIndex < inputText.text.length) {
+                val char = inputText.text[currentIndex]
+
+                when {
+                    // Handle strings
+                    char == '"' -> {
+                        val endIndex = findClosingQuote(inputText.text, currentIndex + 1)
+                        if (endIndex != -1) {
+                            withStyle(SpanStyle(color = Color(0xFF2E7D32))) { // Green
+                                append(inputText.text.substring(currentIndex, endIndex + 1))
+                            }
+                            currentIndex = endIndex + 1
+                            continue
+                        }
+                    }
+
+                    // Handle keywords
+                    char.isLetter() -> {
+                        val word = inputText.text.substring(currentIndex).takeWhile { it.isLetter() }
+                        if (word in listOf("true", "false", "null")) {
+                            withStyle(SpanStyle(color = Color(0xFF9C27B0))) { // Purple
+                                append(word)
+                            }
+                            currentIndex += word.length
+                            continue
+                        }
+                    }
+
+                    // Handle numbers
+                    char.isDigit() || (char == '-' && currentIndex + 1 < inputText.text.length && inputText.text[currentIndex + 1].isDigit()) -> {
+                        val numStartIndex = currentIndex
+                        var numEndIndex = currentIndex
+
+                        // Handle negative numbers
+                        if (char == '-') {
+                            numEndIndex++
+                        }
+
+                        // Parse digits
+                        while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                            numEndIndex++
+                        }
+
+                        // Handle decimal point
+                        if (numEndIndex < inputText.text.length && inputText.text[numEndIndex] == '.') {
+                            numEndIndex++
+                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                                numEndIndex++
+                            }
+                        }
+
+                        // Handle exponent
+                        if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == 'e' || inputText.text[numEndIndex] == 'E')) {
+                            numEndIndex++
+                            if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == '+' || inputText.text[numEndIndex] == '-')) {
+                                numEndIndex++
+                            }
+                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                                numEndIndex++
+                            }
+                        }
+
+                        withStyle(SpanStyle(color = Color(0xFF2196F3))) { // Blue
+                            append(inputText.text.substring(numStartIndex, numEndIndex))
+                        }
+                        currentIndex = numEndIndex
+                        continue
+                    }
+
+                    // Handle brackets and colons
+                    char in "{}[]:" -> {
+                        withStyle(SpanStyle(color = Color(0xFFFF9800))) { // Orange
+                            append(char)
+                        }
+                        currentIndex++
+                        continue
+                    }
+
+                    // Handle property keys (words before colons)
+                    char.isLetterOrDigit() || char == '_' -> {
+                        val keyStartIndex = currentIndex
+                        var keyEndIndex = currentIndex
+
+                        while (keyEndIndex < inputText.text.length &&
+                            (inputText.text[keyEndIndex].isLetterOrDigit() || inputText.text[keyEndIndex] == '_')
+                        ) {
+                            keyEndIndex++
+                        }
+
+                        // Check if this is a property key (followed by a colon after optional whitespace)
+                        var tempIndex = keyEndIndex
+                        while (tempIndex < inputText.text.length && inputText.text[tempIndex].isWhitespace()) {
+                            tempIndex++
+                        }
+
+                        if (tempIndex < inputText.text.length && inputText.text[tempIndex] == ':') {
+                            withStyle(SpanStyle(color = Color(0xFFFFEB3B))) { // Yellow
+                                append(inputText.text.substring(keyStartIndex, keyEndIndex))
+                            }
+                            currentIndex = keyEndIndex
+                            continue
+                        }
+                    }
+                }
+
+                // Default text
+                append(char)
+                currentIndex++
+            }
+        }
+
+        // Use IdentityOffsetMapping to preserve cursor position relative to the text
+        TransformedText(annotatedString, OffsetMapping.Identity)
+    }
+
+    Column {
+        // Show error if any
+        jsonError?.let { error ->
+            Text(
+                text = error,
+                color = MaterialTheme.colors.error,
+                style = MaterialTheme.typography.caption,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        // JSON editor with syntax highlighting
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            visualTransformation = jsonSyntaxHighlighting,
+            textStyle = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            isError = jsonError != null,
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                backgroundColor = MaterialTheme.colors.surface
+            )
+        )
+    }
+}
+
+// Helper function to find the closing quote in a JSON string, accounting for escape sequences
+private fun findClosingQuote(text: String, startIndex: Int): Int {
+    var i = startIndex
+    while (i < text.length) {
+        when (text[i]) {
+            '\\' -> i += 2 // Skip the escaped character
+            '"' -> return i // Found the closing quote
+            else -> i++
+        }
+    }
+    return -1 // No closing quote found
+}
 
 @Composable
 fun propertyEditor(
@@ -245,13 +447,12 @@ fun propertyEditor(
             }
 
             PropertyType.MAP -> {
-                // TODO
+                Text("MAP property editor not implemented yet")
             }
 
             PropertyType.SET -> {
-                // TODO
+                Text("SET property editor not implemented yet")
             }
-
 
             PropertyType.JSON -> {
                 key(blockKey, property.name) {
@@ -330,62 +531,6 @@ private fun arrayPropertyEditor(
     }
 }
 
-@Composable
-private fun jsonPropertyEditor(
-    currentValue: String,
-    onValueChange: (String) -> Unit
-) {
-    var jsonText by remember { mutableStateOf(currentValue) }
-    var jsonError by remember { mutableStateOf<String?>(null) }
-
-    // Validate JSON when text changes
-    LaunchedEffect(jsonText) {
-        try {
-            if (jsonText.isBlank()) {
-                jsonError = null
-                onValueChange("{}")
-                return@LaunchedEffect
-            }
-
-            // Try to parse as JSON to validate
-            org.json.JSONObject(jsonText)
-            jsonError = null
-            onValueChange(jsonText)
-        } catch (e: Exception) {
-            jsonError = "Invalid JSON: ${e.message}"
-        }
-    }
-
-    Column {
-        // Show error if any
-        jsonError?.let { error ->
-            Text(
-                text = error,
-                color = MaterialTheme.colors.error,
-                style = MaterialTheme.typography.caption,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-
-        // JSON editor
-        OutlinedTextField(
-            value = jsonText,
-            onValueChange = { jsonText = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp),
-            textStyle = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp
-            ),
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                focusedBorderColor = if (jsonError == null) MaterialTheme.colors.primary else MaterialTheme.colors.error,
-                unfocusedBorderColor = if (jsonError == null) MaterialTheme.colors.onSurface else MaterialTheme.colors.error
-            )
-        )
-    }
-}
-
 // Property Editor Panel Composable
 @Composable
 fun propertyEditorPanel(
@@ -438,7 +583,7 @@ fun propertyEditorPanel(
                             color = when (block.type) {
                                 BlockType.COMPUTE -> Color(0xFF4C97FF)
                                 BlockType.DATABASE -> Color(0xFFFFAB19)
-                                BlockType.NETWORKING -> Color(0xFFFF8C1A)
+                                BlockType.NETWORKING -> Color(0xFF8C1A)
                                 BlockType.SECURITY -> Color(0xFF40BF4A)
                                 BlockType.INTEGRATION -> Color(0xFF4C97FF)
                                 BlockType.MONITORING -> Color(0xFFFFAB19)
