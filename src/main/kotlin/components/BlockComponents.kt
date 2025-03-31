@@ -1,4 +1,4 @@
-package terraformbuilder
+package terraformbuilder.components
 
 // Add new imports
 import androidx.compose.foundation.Canvas
@@ -35,10 +35,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.serialization.Serializable
+import terraformbuilder.ResourceType
 import terraformbuilder.terraform.TerraformProperties
+import terraformbuilder.utils.OffsetSerializer
 import java.util.*
 import kotlin.math.*
 
+@Serializable
 enum class ConnectionPointType {
     INPUT, OUTPUT
 }
@@ -50,16 +54,22 @@ fun Offset.toDpOffset(density: Float): Offset {
     return Offset(x / density, y / density)
 }
 
+@Serializable
 data class Block(
     val id: String,
     val type: BlockType,
-    private var _position: Offset = Offset.Zero,  // Position in dp
     var content: String,
-    var resourceType: ResourceType, // Type of resource (Lambda Function, S3 Bucket, etc.)
-    private var _size: Offset = Offset.Zero,      // Size in dp
+    val resourceType: ResourceType,
+    @Serializable(with = OffsetSerializer::class)
+    var _position: Offset = Offset.Zero,
+    @Serializable(with = OffsetSerializer::class)
+    var _size: Offset = Offset(120f, 40f),
+    @Serializable(with = OffsetSerializer::class)
     var inputPosition: Offset = Offset.Zero,  // Position of the input connection point in dp
+    @Serializable(with = OffsetSerializer::class)
     var outputPosition: Offset = Offset.Zero,  // Position of the output connection point in dp
-    val properties: MutableMap<String, String> = mutableMapOf()  // Map of property name to value
+    @Serializable
+    val properties: MutableMap<String, String> = mutableMapOf()
 ) {
     // Property accessors with auto-update of connection points
     var position: Offset
@@ -123,19 +133,23 @@ data class Block(
     }
 }
 
+@Serializable
 enum class BlockType {
     COMPUTE, DATABASE, NETWORKING, SECURITY, INTEGRATION, MONITORING
 }
 
 // State for tracking active connection being drawn
+@Serializable
 class ConnectionDragState {
-    var isActive by mutableStateOf(false)
-    var sourceBlock by mutableStateOf<Block?>(null)
-    var sourcePointType by mutableStateOf<ConnectionPointType?>(null)
-    var currentPosition by mutableStateOf(Offset.Zero)  // in dp
+    var isActive = false
+    var sourceBlock: Block? = null
+    var sourcePointType: ConnectionPointType? = null
+    @Serializable(with = OffsetSerializer::class)
+    var currentPosition = Offset.Zero  // in dp
 }
 
 // Connection class with direct references to blocks
+@Serializable
 data class Connection(
     val id: String = UUID.randomUUID().toString(),
     val sourceBlock: Block,
@@ -156,11 +170,12 @@ data class Connection(
 }
 
 // Block state management
+@Serializable
 class BlockState {
-    private val _blocks = mutableStateListOf<Block>()
+    private var _blocks = mutableListOf<Block>()
     val blocks: List<Block> = _blocks
 
-    private val _connections = mutableStateListOf<Connection>()
+    private var _connections = mutableListOf<Connection>()
     val connections: List<Connection> = _connections
 
     val dragState = ConnectionDragState()

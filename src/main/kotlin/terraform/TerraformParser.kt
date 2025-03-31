@@ -1,11 +1,11 @@
 package terraformbuilder.terraform
 
 import com.bertramlabs.plugins.hcl4j.HCLParser
-import terraformbuilder.Block
-import terraformbuilder.BlockType
-import terraformbuilder.ResourceType
-import java.io.StringReader
 import org.json.JSONObject
+import terraformbuilder.ResourceType
+import terraformbuilder.components.Block
+import terraformbuilder.components.BlockType
+import java.io.StringReader
 
 data class TerraformResource(
     val type: String,
@@ -185,6 +185,7 @@ class TerraformParser {
                             "{${value.entries.joinToString(", ") { "${it.key} = ${it.value}" }}}"
                         }
                     }
+
                     is List<*> -> "[${value.joinToString(", ")}]"
                     else -> {
                         // Ignore compiler, this CAN be null

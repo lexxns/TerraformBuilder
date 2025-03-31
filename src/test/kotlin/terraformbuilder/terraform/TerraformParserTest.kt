@@ -1,8 +1,7 @@
 package terraformbuilder.terraform
 
 import org.junit.Test
-import terraformbuilder.BlockType
-import terraformbuilder.ResourceType
+import terraformbuilder.components.BlockType
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue

@@ -1,9 +1,8 @@
 package terraformbuilder.integration
 
 import org.junit.Test
-import terraformbuilder.BlockState
-import terraformbuilder.BlockType
-import terraformbuilder.ResourceType
+import terraformbuilder.components.BlockState
+import terraformbuilder.components.BlockType
 import terraformbuilder.github.GithubRepoInfo
 import terraformbuilder.github.MockGithubService
 import terraformbuilder.terraform.TerraformParser
