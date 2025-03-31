@@ -38,6 +38,7 @@ private fun jsonPropertyEditor(
 ) {
     var text by remember { mutableStateOf(currentValue) }
     var jsonError by remember { mutableStateOf<String?>(null) }
+    val primaryColor = MaterialTheme.colors.primary
 
     // Update text when currentValue changes from outside
     LaunchedEffect(currentValue) {
@@ -73,12 +74,52 @@ private fun jsonPropertyEditor(
                 val char = inputText.text[currentIndex]
 
                 when {
+                    // Handle property keys (words before colons)
+                    char.isLetterOrDigit() || char == '_' -> {
+                        val keyStartIndex = currentIndex
+                        var keyEndIndex = currentIndex
+
+                        while (keyEndIndex < inputText.text.length &&
+                            (inputText.text[keyEndIndex].isLetterOrDigit() || inputText.text[keyEndIndex] == '_')
+                        ) {
+                            keyEndIndex++
+                        }
+
+                        // Check if this is a property key (followed by a colon after optional whitespace)
+                        var tempIndex = keyEndIndex
+                        while (tempIndex < inputText.text.length && inputText.text[tempIndex].isWhitespace()) {
+                            tempIndex++
+                        }
+
+                        if (tempIndex < inputText.text.length && inputText.text[tempIndex] == ':') {
+                            withStyle(SpanStyle(color = primaryColor)) {
+                                append(inputText.text.substring(keyStartIndex, keyEndIndex))
+                            }
+                            currentIndex = keyEndIndex
+                            continue
+                        }
+                    }
+
                     // Handle strings
                     char == '"' -> {
                         val endIndex = findClosingQuote(inputText.text, currentIndex + 1)
                         if (endIndex != -1) {
-                            withStyle(SpanStyle(color = Color(0xFF2E7D32))) { // Green
-                                append(inputText.text.substring(currentIndex, endIndex + 1))
+                            // Check if this is a JSON key (followed by a colon after optional whitespace)
+                            var tempIndex = endIndex + 1
+                            while (tempIndex < inputText.text.length && inputText.text[tempIndex].isWhitespace()) {
+                                tempIndex++
+                            }
+                            
+                            if (tempIndex < inputText.text.length && inputText.text[tempIndex] == ':') {
+                                // This is a JSON key, color it with primary color
+                                withStyle(SpanStyle(color = primaryColor)) {
+                                    append(inputText.text.substring(currentIndex, endIndex + 1))
+                                }
+                            } else {
+                                // This is a regular string value, color it green
+                                withStyle(SpanStyle(color = Color(0xFF2E7D32))) {
+                                    append(inputText.text.substring(currentIndex, endIndex + 1))
+                                }
                             }
                             currentIndex = endIndex + 1
                             continue
@@ -145,32 +186,6 @@ private fun jsonPropertyEditor(
                         }
                         currentIndex++
                         continue
-                    }
-
-                    // Handle property keys (words before colons)
-                    char.isLetterOrDigit() || char == '_' -> {
-                        val keyStartIndex = currentIndex
-                        var keyEndIndex = currentIndex
-
-                        while (keyEndIndex < inputText.text.length &&
-                            (inputText.text[keyEndIndex].isLetterOrDigit() || inputText.text[keyEndIndex] == '_')
-                        ) {
-                            keyEndIndex++
-                        }
-
-                        // Check if this is a property key (followed by a colon after optional whitespace)
-                        var tempIndex = keyEndIndex
-                        while (tempIndex < inputText.text.length && inputText.text[tempIndex].isWhitespace()) {
-                            tempIndex++
-                        }
-
-                        if (tempIndex < inputText.text.length && inputText.text[tempIndex] == ':') {
-                            withStyle(SpanStyle(color = Color(0xFFFFEB3B))) { // Yellow
-                                append(inputText.text.substring(keyStartIndex, keyEndIndex))
-                            }
-                            currentIndex = keyEndIndex
-                            continue
-                        }
                     }
                 }
 
