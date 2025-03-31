@@ -74,6 +74,59 @@ private fun jsonPropertyEditor(
                 val char = inputText.text[currentIndex]
 
                 when {
+                    // Handle keywords first (true, false, null)
+                    char.isLetter() -> {
+                        val word = inputText.text.substring(currentIndex).takeWhile { it.isLetter() }
+                        if (word in listOf("true", "false", "null")) {
+                            withStyle(SpanStyle(color = Color(0xFF9C27B0))) { // Purple
+                                append(word)
+                            }
+                            currentIndex += word.length
+                            continue
+                        }
+                    }
+
+                    // Handle numbers (including negative, decimal, and scientific notation)
+                    char.isDigit() || (char == '-' && currentIndex + 1 < inputText.text.length && inputText.text[currentIndex + 1].isDigit()) -> {
+                        val numStartIndex = currentIndex
+                        var numEndIndex = currentIndex
+
+                        // Handle negative numbers
+                        if (char == '-') {
+                            numEndIndex++
+                        }
+
+                        // Parse digits
+                        while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                            numEndIndex++
+                        }
+
+                        // Handle decimal point
+                        if (numEndIndex < inputText.text.length && inputText.text[numEndIndex] == '.') {
+                            numEndIndex++
+                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                                numEndIndex++
+                            }
+                        }
+
+                        // Handle exponent
+                        if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == 'e' || inputText.text[numEndIndex] == 'E')) {
+                            numEndIndex++
+                            if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == '+' || inputText.text[numEndIndex] == '-')) {
+                                numEndIndex++
+                            }
+                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
+                                numEndIndex++
+                            }
+                        }
+
+                        withStyle(SpanStyle(color = Color(0xFF2196F3))) { // Blue
+                            append(inputText.text.substring(numStartIndex, numEndIndex))
+                        }
+                        currentIndex = numEndIndex
+                        continue
+                    }
+
                     // Handle property keys (words before colons)
                     char.isLetterOrDigit() || char == '_' -> {
                         val keyStartIndex = currentIndex
@@ -124,59 +177,6 @@ private fun jsonPropertyEditor(
                             currentIndex = endIndex + 1
                             continue
                         }
-                    }
-
-                    // Handle keywords
-                    char.isLetter() -> {
-                        val word = inputText.text.substring(currentIndex).takeWhile { it.isLetter() }
-                        if (word in listOf("true", "false", "null")) {
-                            withStyle(SpanStyle(color = Color(0xFF9C27B0))) { // Purple
-                                append(word)
-                            }
-                            currentIndex += word.length
-                            continue
-                        }
-                    }
-
-                    // Handle numbers
-                    char.isDigit() || (char == '-' && currentIndex + 1 < inputText.text.length && inputText.text[currentIndex + 1].isDigit()) -> {
-                        val numStartIndex = currentIndex
-                        var numEndIndex = currentIndex
-
-                        // Handle negative numbers
-                        if (char == '-') {
-                            numEndIndex++
-                        }
-
-                        // Parse digits
-                        while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
-                            numEndIndex++
-                        }
-
-                        // Handle decimal point
-                        if (numEndIndex < inputText.text.length && inputText.text[numEndIndex] == '.') {
-                            numEndIndex++
-                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
-                                numEndIndex++
-                            }
-                        }
-
-                        // Handle exponent
-                        if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == 'e' || inputText.text[numEndIndex] == 'E')) {
-                            numEndIndex++
-                            if (numEndIndex < inputText.text.length && (inputText.text[numEndIndex] == '+' || inputText.text[numEndIndex] == '-')) {
-                                numEndIndex++
-                            }
-                            while (numEndIndex < inputText.text.length && inputText.text[numEndIndex].isDigit()) {
-                                numEndIndex++
-                            }
-                        }
-
-                        withStyle(SpanStyle(color = Color(0xFF2196F3))) { // Blue
-                            append(inputText.text.substring(numStartIndex, numEndIndex))
-                        }
-                        currentIndex = numEndIndex
-                        continue
                     }
 
                     // Handle brackets and colons
