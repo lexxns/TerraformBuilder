@@ -14,14 +14,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import terraformbuilder.Block
@@ -40,10 +38,17 @@ private fun jsonPropertyEditor(
     var jsonError by remember { mutableStateOf<String?>(null) }
     val primaryColor = MaterialTheme.colors.primary
 
+    // Use TextFieldValue to track both text content and selection position
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = currentValue))
+    }
+
     // Update text when currentValue changes from outside
     LaunchedEffect(currentValue) {
         if (currentValue != text) {
             text = currentValue
+            // Preserve selection if possible
+            textFieldValue = textFieldValue.copy(text = currentValue)
         }
     }
 
@@ -63,6 +68,79 @@ private fun jsonPropertyEditor(
         } catch (e: Exception) {
             jsonError = "Invalid JSON: ${e.message}"
         }
+    }
+
+    // Handle text changes with indentation
+    fun handleTextChange(newValue: TextFieldValue) {
+        val newText = newValue.text
+        val cursorPosition = newValue.selection.start
+
+        // Check if a newline was just added
+        val oldText = textFieldValue.text
+        val oldCursorPosition = textFieldValue.selection.start
+
+        // Detect if a newline was just typed at the cursor position
+        if (newText.length > oldText.length &&
+            cursorPosition > 0 &&
+            newText[cursorPosition - 1] == '\n'
+        ) {
+
+            // Find the line that was just created
+            val lines = newText.split('\n')
+            val currentLineIndex = newText.substring(0, cursorPosition).count { it == '\n' }
+
+            // If we're not at the beginning of the file
+            if (currentLineIndex > 0) {
+                // Find the indentation of the previous line
+                val previousLine = lines[currentLineIndex - 1]
+                val previousIndent = previousLine.takeWhile { it.isWhitespace() }
+
+                // Analyze previous line content
+                val trimmedPrevLine = previousLine.trim()
+
+                // Determine if we need to adjust indentation
+                val indentation = when {
+                    // Increase indent after opening brace
+                    trimmedPrevLine.endsWith('{') || trimmedPrevLine.endsWith('[') ->
+                        previousIndent + "    "
+
+                    // Decrease indent if previous line started with closing brace
+                    trimmedPrevLine.startsWith('}') || trimmedPrevLine.startsWith(']') ->
+                        if (previousIndent.length >= 4) previousIndent.substring(0, previousIndent.length - 4)
+                        else ""
+
+                    // Keep same indentation otherwise
+                    else -> previousIndent
+                }
+
+                // Special case: if the current line starts with a closing brace,
+                // reduce indentation by one level
+                val currentLine = if (currentLineIndex < lines.size) lines[currentLineIndex] else ""
+                val finalIndentation = if (currentLine.trim().startsWith('}') || currentLine.trim().startsWith(']')) {
+                    if (indentation.length >= 4) indentation.substring(0, indentation.length - 4)
+                    else ""
+                } else {
+                    indentation
+                }
+
+                // Insert indentation at the cursor position
+                val beforeCursor = newText.substring(0, cursorPosition)
+                val afterCursor = newText.substring(cursorPosition)
+                val finalText = beforeCursor + finalIndentation + afterCursor
+
+                // Update text and cursor position
+                text = finalText
+                textFieldValue = TextFieldValue(
+                    text = finalText,
+                    selection = TextRange(cursorPosition + finalIndentation.length)
+                )
+                return
+            }
+        }
+
+        // Normal case - update text and TextFieldValue
+        text = newText
+        textFieldValue = newValue
     }
 
     // Create a visual transformation for JSON syntax highlighting
@@ -162,7 +240,7 @@ private fun jsonPropertyEditor(
                             while (tempIndex < inputText.text.length && inputText.text[tempIndex].isWhitespace()) {
                                 tempIndex++
                             }
-                            
+
                             if (tempIndex < inputText.text.length && inputText.text[tempIndex] == ':') {
                                 // This is a JSON key, color it with primary color
                                 withStyle(SpanStyle(color = primaryColor)) {
@@ -212,8 +290,10 @@ private fun jsonPropertyEditor(
 
         // JSON editor with syntax highlighting
         OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
+            value = textFieldValue,
+            onValueChange = { newValue ->
+                handleTextChange(newValue)
+            },
             visualTransformation = jsonSyntaxHighlighting,
             textStyle = TextStyle(
                 fontFamily = FontFamily.Monospace,
@@ -553,8 +633,6 @@ fun propertyEditorPanel(
     onPropertyChange: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    println("PROPERTY-PANEL: Showing properties for block ${block.id} with content '${block.content}'")
-
     val blockContent = block.content
     val blockKey = remember(block.id) { block.id }
 

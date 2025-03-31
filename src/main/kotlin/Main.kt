@@ -649,7 +649,6 @@ fun workspaceArea(
         // Display property editor for selected block
         selectedBlockId?.let { id ->
             key(id, blockContentVersion.value) {
-                println("WORKSPACE: Rendering property panel for block $id with version ${blockContentVersion.value}")
                 val block = blockState.blocks.find { it.id == id }
                 block?.let {
                     // Property editor panel
