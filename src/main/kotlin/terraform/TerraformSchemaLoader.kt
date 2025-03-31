@@ -57,18 +57,78 @@ class TerraformSchemaLoader {
         return result
     }
 
+    private fun complexPropertyType(details: JsonNode): PropertyType {
+        // Handle known complex types with explicit type arrays
+        val typeStr = details.path("type").toString()
+
+        return when {
+            typeStr == "[\"map\",\"string\"]" -> PropertyType.MAP
+            typeStr == "[\"set\",\"string\"]" -> PropertyType.SET
+            typeStr.contains("policy") -> PropertyType.JSON  // Fallback detection for complex policy types
+            else -> PropertyType.STRING  // Default for unrecognized complex types
+        }
+    }
+
+    /**
+     * Determines if a field likely contains a JSON policy document based on its name and description.
+     */
+    private fun isPolicyField(name: String, description: String): Boolean {
+        // Common policy field name patterns
+        val policyNamePatterns = listOf(
+            "_policy$",
+            "policy$",
+            "policy_",
+            "_document$",
+            "document$",
+            "^assume_role_",
+            "^trust_"
+        )
+
+        // Check name against known patterns
+        if (policyNamePatterns.any { pattern ->
+                Regex(pattern).containsMatchIn(name.lowercase())
+            }) {
+            return true
+        }
+
+        // Check description for policy-related terms
+        val descriptionKeywords = listOf(
+            "policy document",
+            "json",
+            "iam policy",
+            "policy statement",
+            "trust relationship"
+        )
+
+        if (descriptionKeywords.any { keyword ->
+                description.lowercase().contains(keyword.lowercase())
+            }) {
+            return true
+        }
+
+        return false
+    }
+
     private fun extractProperties(schema: JsonNode): List<TerraformProperty> {
         val properties = mutableListOf<TerraformProperty>()
         val attributes = schema.path("block").path("attributes")
 
         attributes.fields().forEach { (name, details) ->
+            val description = details.path("description").asText("")
+
             val type = when (details.path("type").asText()) {
-                "string" -> PropertyType.STRING
+                "string" -> {
+                    // Check if this string might be a JSON policy
+                    if (isPolicyField(name, description)) {
+                        PropertyType.JSON
+                    } else {
+                        PropertyType.STRING
+                    }
+                }
+
                 "number" -> PropertyType.NUMBER
                 "bool" -> PropertyType.BOOLEAN
-                else -> {
-                    complexPropertyType(details)
-                }
+                else -> complexPropertyType(details)
             }
 
             properties.add(
@@ -77,31 +137,50 @@ class TerraformSchemaLoader {
                     type = type,
                     required = details.path("required").asBoolean(false),
                     deprecated = details.path("deprecated").asBoolean(false),
-                    description = details.path("description").asText(""),
-                    // We could potentially extract options for enum types from validation blocks
+                    description = description,
                     options = emptyList()
                 )
             )
         }
 
+        // Also process nested block_types, especially for inline policies
+        processNestedBlocks(schema, properties)
+
         return properties
     }
 
-    private fun complexPropertyType(details: JsonNode): PropertyType {
-        return when (details.path("type").toString()) {
-            "[\"map\",\"string\"]" -> PropertyType.MAP
-            "[\"set\",\"string\"]" -> PropertyType.SET
-            else -> {
-                if (details.path("type").toString().contains("policy")) {
-                    return PropertyType.JSON
+    /**
+     * Process nested blocks like inline_policy which might contain policy fields
+     */
+    private fun processNestedBlocks(schema: JsonNode, properties: MutableList<TerraformProperty>) {
+        val blockTypes = schema.path("block").path("block_types")
+
+        blockTypes.fields().forEach { (blockName, blockDetails) ->
+            // For policy-related blocks, mark their policy fields as JSON
+            if (blockName.contains("policy") || blockName.contains("document")) {
+                val nestedAttributes = blockDetails.path("block").path("attributes")
+
+                nestedAttributes.fields().forEach { (fieldName, fieldDetails) ->
+                    val fieldDescription = fieldDetails.path("description").asText("")
+
+                    if (fieldName == "policy" || fieldName == "document" ||
+                        isPolicyField(fieldName, fieldDescription)
+                    ) {
+
+                        // Add this as a nested property with JSON type
+                        properties.add(
+                            TerraformProperty(
+                                name = "$blockName.$fieldName",
+                                type = PropertyType.JSON,
+                                required = fieldDetails.path("required").asBoolean(false),
+                                deprecated = fieldDetails.path("deprecated").asBoolean(false),
+                                description = fieldDescription,
+                                options = emptyList()
+                            )
+                        )
+                    }
                 }
-                // TODO actually complex property types
-                return PropertyType.STRING
             }
         }
-    }
-
-    private fun parseOtherPropertyTypes() {
-
     }
 }
