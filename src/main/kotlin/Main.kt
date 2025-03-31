@@ -4,25 +4,23 @@ import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.OutlinedTextField
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
+import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
+import terraformbuilder.components.Block
 import terraformbuilder.components.BlockState
 import terraformbuilder.components.editor
 import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen
 import terraformbuilder.terraform.VariableState
-import androidx.compose.material.MaterialTheme
 
 @Composable
 @Preview
@@ -30,6 +28,33 @@ fun app() {
     val blockState = remember { BlockState() }
     val projectState = remember { mutableStateOf(ProjectManager.loadProjectState()) }
     val variableState = remember { VariableState() }
+
+    // Load full project data if there's a current project
+    LaunchedEffect(projectState.value.currentProject) {
+        projectState.value.currentProject?.let { project ->
+            try {
+                val (loadedProject, blocks, variables) = ProjectManager.loadProject(project.id)
+                    ?: throw Exception("Failed to load project")
+
+                // Update project state
+                projectState.value = projectState.value.setCurrentProject(loadedProject)
+
+                // Load blocks and variables
+                blockState.clearAll()
+                blocks.forEach { block ->
+                    blockState.addBlock(block)
+                }
+
+                variableState.clearAll()
+                variables.forEach { variableState.addVariable(it) }
+
+                println("Loaded ${blocks.size} blocks and ${variables.size} variables")
+            } catch (e: Exception) {
+                println("Error loading project: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
 
     var showNewProjectDialog by remember { mutableStateOf(false) }
     var showOpenProjectDialog by remember { mutableStateOf(false) }
@@ -48,6 +73,9 @@ fun app() {
         )
         projectState.value = projectState.value.setCurrentProject(project)
         ProjectManager.saveProjectState(projectState.value)
+        // Clear existing state for new project
+        blockState.clearAll()
+        variableState.clearAll()
     }
 
     val onNewProjectFromMenu: () -> Unit = {
@@ -67,10 +95,14 @@ fun app() {
 
                 // Load blocks and variables
                 blockState.clearAll()
-                blocks.forEach { blockState.addBlock(it) }
+                blocks.forEach { block ->
+                    blockState.addBlock(block)
+                }
 
                 variableState.clearAll()
                 variables.forEach { variableState.addVariable(it) }
+
+                println("Loaded ${blocks.size} blocks and ${variables.size} variables")
             } catch (e: Exception) {
                 errorMessage = "Error loading project: ${e.message}"
             } finally {
@@ -131,7 +163,9 @@ fun app() {
             onSaveProject = onSaveProject,
             onSaveProjectAs = onSaveProject,
             onCloseProject = onCloseProject,
-            onExit = { kotlin.system.exitProcess(0) }
+            onExit = { kotlin.system.exitProcess(0) },
+            blockState = blockState,
+            variableState = variableState
         )
     }
 

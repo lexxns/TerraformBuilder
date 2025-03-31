@@ -56,14 +56,14 @@ fun editor(
     onSaveProject: () -> Unit,
     onSaveProjectAs: () -> Unit,
     onCloseProject: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    blockState: BlockState,
+    variableState: VariableState
 ) {
     var selectedBlock by remember { mutableStateOf<Block?>(null) }
     var hoverPosition by remember { mutableStateOf(Offset.Zero) }
     var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current.density
-
-    val blockState = remember { BlockState() }
 
     // Track when the mouse button is down during a drag
     var isMouseDown by remember { mutableStateOf(false) }
@@ -83,7 +83,6 @@ fun editor(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     var showVariablesDialog by remember { mutableStateOf(false) }
-    val variableState = remember { VariableState() }
 
     if (showGithubDialog) {
         GithubUrlDialog(

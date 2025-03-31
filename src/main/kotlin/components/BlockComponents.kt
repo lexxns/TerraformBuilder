@@ -95,7 +95,7 @@ data class Block(
     }
 
     // Updates the connection point positions based on the block's position and size
-    private fun updateConnectionPoints() {
+    fun updateConnectionPoints() {
         // For input: left edge, vertically centered
         // Position it slightly to the left to appear as part of the block
         inputPosition = _position + Offset(-6f, _size.y / 2f)
@@ -131,6 +131,11 @@ data class Block(
     fun getProperty(name: String): String? {
         return properties[name]
     }
+
+    // Initialize connection points after deserialization
+    init {
+        updateConnectionPoints()
+    }
 }
 
 @Serializable
@@ -144,6 +149,7 @@ class ConnectionDragState {
     var isActive = false
     var sourceBlock: Block? = null
     var sourcePointType: ConnectionPointType? = null
+
     @Serializable(with = OffsetSerializer::class)
     var currentPosition = Offset.Zero  // in dp
 }
@@ -167,6 +173,13 @@ data class Connection(
     fun getEndPosition(): Offset {
         return targetBlock.getConnectionPointPosition(targetPointType)
     }
+
+    // Initialize connection points after deserialization
+    init {
+        // Ensure connection points are up to date
+        sourceBlock.updateConnectionPoints()
+        targetBlock.updateConnectionPoints()
+    }
 }
 
 // Block state management
@@ -183,6 +196,8 @@ class BlockState {
     fun addBlock(block: Block) {
         // Initialize default properties when adding a block
         block.initializeDefaultProperties()
+        // Ensure connection points are up to date
+        block.updateConnectionPoints()
         _blocks.add(block)
     }
 
