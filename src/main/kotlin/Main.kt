@@ -7,20 +7,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
-import terraformbuilder.components.Block
 import terraformbuilder.components.BlockState
 import terraformbuilder.components.editor
 import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen
 import terraformbuilder.terraform.VariableState
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 @Composable
 @Preview
@@ -43,6 +43,12 @@ fun app() {
                 blockState.clearAll()
                 blocks.forEach { block ->
                     blockState.addBlock(block)
+                }
+
+                // Restore connections
+                val connections = ProjectManager.loadConnections(project.id)
+                if (connections.isNotEmpty()) {
+                    blockState.restoreConnections(connections)
                 }
 
                 variableState.clearAll()
@@ -78,10 +84,6 @@ fun app() {
         variableState.clearAll()
     }
 
-    val onNewProjectFromMenu: () -> Unit = {
-        showNewProjectDialog = true
-    }
-
     val onOpenProject: (Project) -> Unit = { project ->
         coroutineScope.launch {
             isLoading = true
@@ -99,6 +101,12 @@ fun app() {
                     blockState.addBlock(block)
                 }
 
+                // Restore connections
+                val connections = ProjectManager.loadConnections(project.id)
+                if (connections.isNotEmpty()) {
+                    blockState.restoreConnections(connections)
+                }
+
                 variableState.clearAll()
                 variables.forEach { variableState.addVariable(it) }
 
@@ -111,10 +119,6 @@ fun app() {
         }
     }
 
-    val onOpenProjectFromMenu: () -> Unit = {
-        showOpenProjectDialog = true
-    }
-
     val onSaveProject: () -> Unit = {
         coroutineScope.launch {
             isLoading = true
@@ -124,7 +128,8 @@ fun app() {
                     ProjectManager.saveProject(
                         project = project,
                         blocks = blockState.blocks,
-                        variables = variableState.variables
+                        variables = variableState.variables,
+                        connections = blockState.connections
                     )
                     ProjectManager.saveProjectState(projectState.value)
                 }
@@ -136,6 +141,10 @@ fun app() {
         }
     }
 
+    val onSaveProjectAs: () -> Unit = {
+        // Implementation of onSaveProjectAs
+    }
+
     val onCloseProject: () -> Unit = {
         projectState.value = projectState.value.setCurrentProject(null)
         blockState.clearAll()
@@ -143,7 +152,20 @@ fun app() {
         ProjectManager.saveProjectState(projectState.value)
     }
 
-    val onRemoveFromRecent: (Project) -> Unit = { project ->
+    val onExit: () -> Unit = { kotlin.system.exitProcess(0) }
+
+    // Callbacks for menu actions
+    val onNewProjectFromMenu = { name: String, description: String -> 
+        onCreateNewProject(name, description)
+    }
+    val onOpenProjectFromMenu = { onOpenProject(projectState.value.currentProject!!) }
+    val onSaveProjectFromMenu = { onSaveProject() }
+    val onSaveProjectAsFromMenu = { onSaveProjectAs() }
+    val onCloseProjectFromMenu = { onCloseProject() }
+    val onExitFromMenu = { onExit() }
+
+    // Callback for removing projects from recent list
+    val onRemoveFromRecent = { project: Project ->
         projectState.value = projectState.value.removeRecentProject(project.id)
         ProjectManager.saveProjectState(projectState.value)
     }
@@ -160,10 +182,10 @@ fun app() {
         editor(
             onNewProject = onNewProjectFromMenu,
             onOpenProject = onOpenProjectFromMenu,
-            onSaveProject = onSaveProject,
-            onSaveProjectAs = onSaveProject,
-            onCloseProject = onCloseProject,
-            onExit = { kotlin.system.exitProcess(0) },
+            onSaveProject = onSaveProjectFromMenu,
+            onSaveProjectAs = onSaveProjectAsFromMenu,
+            onCloseProject = onCloseProjectFromMenu,
+            onExit = onExitFromMenu,
             blockState = blockState,
             variableState = variableState
         )

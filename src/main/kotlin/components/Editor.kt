@@ -51,7 +51,7 @@ private fun generateDefaultName(resourceType: ResourceType): String {
 @Composable
 @Preview
 fun editor(
-    onNewProject: () -> Unit,
+    onNewProject: (String, String) -> Unit,
     onOpenProject: () -> Unit,
     onSaveProject: () -> Unit,
     onSaveProjectAs: () -> Unit,

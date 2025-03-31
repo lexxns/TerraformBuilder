@@ -158,8 +158,8 @@ class ConnectionDragState {
 @Serializable
 data class Connection(
     val id: String = UUID.randomUUID().toString(),
-    val sourceBlock: Block,
-    val targetBlock: Block
+    var sourceBlock: Block,
+    var targetBlock: Block
 ) {
     private val sourcePointType = ConnectionPointType.OUTPUT
     private val targetPointType = ConnectionPointType.INPUT
@@ -199,6 +199,11 @@ class BlockState {
         // Ensure connection points are up to date
         block.updateConnectionPoints()
         _blocks.add(block)
+    }
+
+    fun restoreConnections(connections: List<Connection>) {
+        _connections.clear()
+        _connections.addAll(connections)
     }
 
     fun removeBlock(blockId: String) {

@@ -2,6 +2,7 @@ package terraformbuilder.project
 
 import kotlinx.serialization.json.Json
 import terraformbuilder.components.Block
+import terraformbuilder.components.Connection
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.utils.SystemPaths
 import java.io.File
@@ -49,7 +50,12 @@ object ProjectManager {
         }
     }
 
-    fun saveProject(project: Project, blocks: List<Block>, variables: List<TerraformVariable>) {
+    fun saveProject(
+        project: Project,
+        blocks: List<Block>,
+        variables: List<TerraformVariable>,
+        connections: List<Connection>
+    ) {
         val projectDir = File(projectsDir, project.id)
         println("Saving project to directory: ${projectDir.absolutePath}")
         projectDir.mkdirs()
@@ -69,6 +75,11 @@ object ProjectManager {
             val variablesFile = File(projectDir, "variables.json")
             println("Saving ${variables.size} variables to: ${variablesFile.absolutePath}")
             variablesFile.writeText(json.encodeToString(variables))
+
+            // Save connections
+            val connectionsFile = File(projectDir, "connections.json")
+            println("Saving ${connections.size} connections to: ${connectionsFile.absolutePath}")
+            connectionsFile.writeText(json.encodeToString(connections))
 
             println("Project saved successfully")
         } catch (e: Exception) {
@@ -90,6 +101,7 @@ object ProjectManager {
             val metadataFile = File(projectDir, "metadata.json")
             val blocksFile = File(projectDir, "blocks.json")
             val variablesFile = File(projectDir, "variables.json")
+            val connectionsFile = File(projectDir, "connections.json")
 
             println("Loading project metadata from: ${metadataFile.absolutePath}")
             val project = json.decodeFromString<Project>(metadataFile.readText())
@@ -102,12 +114,47 @@ object ProjectManager {
             val variables = json.decodeFromString<List<TerraformVariable>>(variablesFile.readText())
             println("Loaded ${variables.size} variables")
 
+            // Load connections if the file exists
+            if (connectionsFile.exists()) {
+                println("Loading connections from: ${connectionsFile.absolutePath}")
+                val connections = json.decodeFromString<List<Connection>>(connectionsFile.readText())
+                println("Loaded ${connections.size} connections")
+                // Add connections to blocks
+                connections.forEach { connection ->
+                    val sourceBlock = blocks.find { it.id == connection.sourceBlock.id }
+                    val targetBlock = blocks.find { it.id == connection.targetBlock.id }
+                    if (sourceBlock != null && targetBlock != null) {
+                        connection.sourceBlock = sourceBlock
+                        connection.targetBlock = targetBlock
+                    }
+                }
+                return Triple(project, blocks, variables)
+            }
+
             return Triple(project, blocks, variables)
         } catch (e: Exception) {
             println("Error loading project: ${e.message}")
             e.printStackTrace()
             return null
         }
+    }
+
+    fun loadConnections(projectId: String): List<Connection> {
+        val projectDir = File(projectsDir, projectId)
+        val connectionsFile = File(projectDir, "connections.json")
+        
+        if (connectionsFile.exists()) {
+            try {
+                println("Loading connections from: ${connectionsFile.absolutePath}")
+                val connections = json.decodeFromString<List<Connection>>(connectionsFile.readText())
+                println("Loaded ${connections.size} connections")
+                return connections
+            } catch (e: Exception) {
+                println("Error loading connections: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+        return emptyList()
     }
 
     fun createProject(name: String, description: String = ""): Project {
