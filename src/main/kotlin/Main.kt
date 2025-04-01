@@ -1,11 +1,13 @@
 package terraformbuilder
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -19,8 +21,6 @@ import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen
 import terraformbuilder.terraform.VariableState
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 
 @Composable
 @Preview
@@ -155,10 +155,10 @@ fun app() {
     val onExit: () -> Unit = { kotlin.system.exitProcess(0) }
 
     // Callbacks for menu actions
-    val onNewProjectFromMenu = { name: String, description: String -> 
+    val onNewProjectFromMenu = { name: String, description: String ->
         onCreateNewProject(name, description)
     }
-    val onOpenProjectFromMenu = { onOpenProject(projectState.value.currentProject!!) }
+    val onOpenProjectFromMenu = { showOpenProjectDialog = true }
     val onSaveProjectFromMenu = { onSaveProject() }
     val onSaveProjectAsFromMenu = { onSaveProjectAs() }
     val onCloseProjectFromMenu = { onCloseProject() }
@@ -233,6 +233,65 @@ fun app() {
             dismissButton = {
                 TextButton(onClick = { showNewProjectDialog = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Open Project Dialog
+    if (showOpenProjectDialog) {
+        AlertDialog(
+            onDismissRequest = { showOpenProjectDialog = false },
+            title = { Text("Open Project") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (projectState.value.recentProjects.isEmpty()) {
+                        Text(
+                            text = "No recent projects",
+                            style = MaterialTheme.typography.body1,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        projectState.value.recentProjects.forEach { project ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onOpenProject(project)
+                                        showOpenProjectDialog = false
+                                    }
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = project.name,
+                                        style = MaterialTheme.typography.subtitle1
+                                    )
+                                    Text(
+                                        text = project.description,
+                                        style = MaterialTheme.typography.body2,
+                                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                IconButton(onClick = { onRemoveFromRecent(project) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove from recent"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOpenProjectDialog = false }) {
+                    Text("Close")
                 }
             }
         )
