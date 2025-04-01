@@ -103,11 +103,6 @@ data class Block(
         // For output: right edge, vertically centered
         // Position it slightly to the right to appear as part of the block
         outputPosition = _position + Offset(_size.x + 6f, _size.y / 2f)
-
-        // Print debug info
-        println("Block $content position: $_position, size: $_size")
-        println("Input at: $inputPosition, Output at: $outputPosition")
-        println("--------------------")
     }
 
     // Initialize default property values from TerraformProperties
@@ -140,7 +135,21 @@ data class Block(
 
 @Serializable
 enum class BlockType {
-    COMPUTE, DATABASE, NETWORKING, SECURITY, INTEGRATION, MONITORING
+    LOAD_BALANCER,  // ALB, ELB, Target Groups, etc.
+    EC2,           // EC2 instances, launch templates, etc.
+    VPC,           // VPC, subnets, route tables, etc.
+    SECURITY,      // IAM, KMS, Security Groups, etc.
+    LAMBDA,        // Lambda functions, layers, etc.
+    ECS,           // ECS clusters, services, tasks, etc.
+    RDS,           // RDS instances, clusters, etc.
+    DYNAMODB,      // DynamoDB tables, items, etc.
+    STORAGE,       // S3 buckets, policies, etc.
+    MONITORING,    // CloudWatch, alarms, logs, etc.
+    API_GATEWAY,   // API Gateway resources, methods, etc.
+    SQS,           // SQS queues, policies, etc.
+    SNS,           // SNS topics, subscriptions, etc.
+    KINESIS,       // Kinesis streams, firehose, etc.
+    INTEGRATION    // Default for unknown types
 }
 
 // State for tracking active connection being drawn
@@ -403,6 +412,31 @@ fun createBlock(
     return block
 }
 
+/**
+ * Centralized color mappings for BlockTypes
+ */
+object BlockTypeColors {
+    val colors = mapOf(
+        BlockType.LOAD_BALANCER to Color(0xFF4C97FF),  // Blue
+        BlockType.EC2 to Color(0xFFFF8C1A),           // Orange
+        BlockType.VPC to Color(0xFF40BF4A),           // Green
+        BlockType.SECURITY to Color(0xFFFFAB19),      // Yellow
+        BlockType.LAMBDA to Color(0xFF4C97FF),        // Blue
+        BlockType.ECS to Color(0xFFFF8C1A),          // Orange
+        BlockType.RDS to Color(0xFF40BF4A),          // Green
+        BlockType.DYNAMODB to Color(0xFFFFAB19),     // Yellow
+        BlockType.STORAGE to Color(0xFF4C97FF),      // Blue
+        BlockType.MONITORING to Color(0xFFFF8C1A),   // Orange
+        BlockType.API_GATEWAY to Color(0xFF40BF4A),  // Green
+        BlockType.SQS to Color(0xFFFFAB19),         // Yellow
+        BlockType.SNS to Color(0xFF4C97FF),         // Blue
+        BlockType.KINESIS to Color(0xFFFF8C1A),     // Orange
+        BlockType.INTEGRATION to Color(0xFF808080)  // Gray
+    )
+
+    fun getColor(type: BlockType): Color = colors[type] ?: Color(0xFF808080)
+}
+
 // UI Components
 
 @Composable
@@ -529,14 +563,7 @@ fun blockView(
             modifier = Modifier
                 .zIndex(1f) // Higher z-index ensures block appears above connection points
                 .background(
-                    color = when (block.type) {
-                        BlockType.COMPUTE -> Color(0xFF4C97FF)
-                        BlockType.DATABASE -> Color(0xFFFFAB19)
-                        BlockType.NETWORKING -> Color(0xFFFF8C1A)
-                        BlockType.SECURITY -> Color(0xFF40BF4A)
-                        BlockType.INTEGRATION -> Color(0xFF4C97FF)
-                        BlockType.MONITORING -> Color(0xFFFFAB19)
-                    },
+                    color = BlockTypeColors.getColor(block.type),
                     shape = RoundedCornerShape(8.dp)
                 )
                 .border(
@@ -911,14 +938,7 @@ fun blockItem(
                 modifier = Modifier
                     .size(16.dp)
                     .background(
-                        color = when (block.type) {
-                            BlockType.COMPUTE -> Color(0xFF4C97FF)
-                            BlockType.DATABASE -> Color(0xFFFFAB19)
-                            BlockType.NETWORKING -> Color(0xFFFF8C1A)
-                            BlockType.SECURITY -> Color(0xFF40BF4A)
-                            BlockType.INTEGRATION -> Color(0xFF4C97FF)
-                            BlockType.MONITORING -> Color(0xFFFFAB19)
-                        },
+                        color = BlockTypeColors.getColor(block.type),
                         shape = RoundedCornerShape(2.dp)
                     )
                     .border(1.dp, Color.Black, RoundedCornerShape(2.dp))

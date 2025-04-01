@@ -2,6 +2,7 @@ package terraformbuilder.components
 
 import androidx.compose.ui.geometry.Offset
 import org.junit.Test
+import terraformbuilder.ResourceType
 import kotlin.test.assertEquals
 
 class BlockViewTest {
@@ -11,7 +12,7 @@ class BlockViewTest {
         // Create a test block
         val testBlock = Block(
             id = "test-block-1",
-            type = BlockType.COMPUTE,
+            type = BlockType.EC2,
             content = "Test Lambda",
             resourceType = ResourceType.LAMBDA_FUNCTION,
             _position = Offset(100f, 100f)
@@ -22,7 +23,7 @@ class BlockViewTest {
 
         // Verify the block properties
         assertEquals("Test Lambda", testBlock.content)
-        assertEquals(BlockType.COMPUTE, testBlock.type)
+        assertEquals(BlockType.EC2, testBlock.type)
         assertEquals(ResourceType.LAMBDA_FUNCTION, testBlock.resourceType)
         assertEquals("my-test-function", testBlock.getProperty("function_name"))
         assertEquals("nodejs18.x", testBlock.getProperty("runtime"))
@@ -33,7 +34,7 @@ class BlockViewTest {
         // Create a test block
         val testBlock = Block(
             id = "test-block-2",
-            type = BlockType.DATABASE,
+            type = BlockType.DYNAMODB,
             content = "Test Database",
             resourceType = ResourceType.DYNAMODB_TABLE,
             _position = Offset(100f, 100f)
@@ -62,7 +63,7 @@ class BlockViewTest {
         // Create a test block
         val testBlock = Block(
             id = "test-block-3",
-            type = BlockType.NETWORKING,
+            type = BlockType.VPC,
             content = "Test VPC",
             resourceType = ResourceType.VPC,
             _position = Offset(100f, 100f)

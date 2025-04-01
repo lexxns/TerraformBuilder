@@ -75,7 +75,6 @@ private fun jsonPropertyEditor(
 
         // Check if a newline was just added
         val oldText = textFieldValue.text
-        val oldCursorPosition = textFieldValue.selection.start
 
         // Detect if a newline was just typed at the cursor position
         if (newText.length > oldText.length &&
@@ -671,14 +670,7 @@ fun propertyEditorPanel(
                     modifier = Modifier
                         .size(24.dp)
                         .background(
-                            color = when (block.type) {
-                                BlockType.COMPUTE -> Color(0xFF4C97FF)
-                                BlockType.DATABASE -> Color(0xFFFFAB19)
-                                BlockType.NETWORKING -> Color(0xFF8C1A)
-                                BlockType.SECURITY -> Color(0xFF40BF4A)
-                                BlockType.INTEGRATION -> Color(0xFF4C97FF)
-                                BlockType.MONITORING -> Color(0xFFFFAB19)
-                            },
+                            color = BlockTypeColors.getColor(block.type),
                             shape = RoundedCornerShape(4.dp)
                         )
                         .border(1.dp, Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))

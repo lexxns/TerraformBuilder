@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser
+import terraformbuilder.terraform.ResourceTypeCategorizer
 import terraformbuilder.terraform.TerraformParser
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.terraform.VariableState
@@ -297,6 +298,12 @@ fun blockLibraryPanel(
     onVariablesClick: () -> Unit
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<String>()) }
+    val categorizer = remember { ResourceTypeCategorizer() }
+    val resourceCategories = remember {
+        ResourceType.entries
+            .filter { it != ResourceType.UNKNOWN }
+            .groupBy { categorizer.determineBlockType(it) }
+    }
 
     LazyColumn(
         modifier = modifier,
@@ -329,136 +336,23 @@ fun blockLibraryPanel(
             Text("AWS Infrastructure", style = MaterialTheme.typography.h6)
         }
 
-        // Compute Resources
-        item {
-            collapsibleCategory(
-                name = "Compute",
-                isExpanded = expandedCategories.contains("Compute"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Compute")) {
-                        expandedCategories - "Compute"
-                    } else {
-                        expandedCategories + "Compute"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.COMPUTE, ResourceType.LAMBDA_FUNCTION),
-                    createLibraryBlock(BlockType.COMPUTE, ResourceType.EC2_HOST),
-                    createLibraryBlock(BlockType.COMPUTE, ResourceType.ECS_CLUSTER),
-                    createLibraryBlock(BlockType.COMPUTE, ResourceType.ECS_SERVICE)
-                ),
-                onBlockSelected = onBlockSelected
-            )
-        }
-
-        // Database Resources
-        item {
-            collapsibleCategory(
-                name = "Database",
-                isExpanded = expandedCategories.contains("Database"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Database")) {
-                        expandedCategories - "Database"
-                    } else {
-                        expandedCategories + "Database"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.DATABASE, ResourceType.DYNAMODB_TABLE),
-                    createLibraryBlock(BlockType.DATABASE, ResourceType.RDS_CLUSTER),
-                    createLibraryBlock(BlockType.DATABASE, ResourceType.S3_BUCKET),
-                    createLibraryBlock(BlockType.DATABASE, ResourceType.ELASTICACHE_CLUSTER)
-                ),
-                onBlockSelected = onBlockSelected
-            )
-        }
-
-        // Networking Resources
-        item {
-            collapsibleCategory(
-                name = "Networking",
-                isExpanded = expandedCategories.contains("Networking"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Networking")) {
-                        expandedCategories - "Networking"
-                    } else {
-                        expandedCategories + "Networking"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.NETWORKING, ResourceType.VPC),
-                    createLibraryBlock(BlockType.NETWORKING, ResourceType.SUBNET),
-                    createLibraryBlock(BlockType.NETWORKING, ResourceType.SECURITY_GROUP),
-                    createLibraryBlock(BlockType.NETWORKING, ResourceType.ROUTE_TABLE)
-                ),
-                onBlockSelected = onBlockSelected
-            )
-        }
-
-        // Security Resources
-        item {
-            collapsibleCategory(
-                name = "Security",
-                isExpanded = expandedCategories.contains("Security"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Security")) {
-                        expandedCategories - "Security"
-                    } else {
-                        expandedCategories + "Security"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.SECURITY, ResourceType.IAM_ROLE),
-                    createLibraryBlock(BlockType.SECURITY, ResourceType.IAM_POLICY),
-                    createLibraryBlock(BlockType.SECURITY, ResourceType.KMS_KEY),
-                    createLibraryBlock(BlockType.SECURITY, ResourceType.SECRETSMANAGER_SECRET)
-                ),
-                onBlockSelected = onBlockSelected
-            )
-        }
-
-        // Integration Resources
-        item {
-            collapsibleCategory(
-                name = "Integration",
-                isExpanded = expandedCategories.contains("Integration"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Integration")) {
-                        expandedCategories - "Integration"
-                    } else {
-                        expandedCategories + "Integration"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.API_GATEWAY_REST_API),
-                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.SQS_QUEUE),
-                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.SNS_TOPIC),
-                    createLibraryBlock(BlockType.INTEGRATION, ResourceType.KINESIS_FIREHOSE_DELIVERY_STREAM)
-                ),
-                onBlockSelected = onBlockSelected
-            )
-        }
-
-        // Monitoring Resources
-        item {
-            collapsibleCategory(
-                name = "Monitoring",
-                isExpanded = expandedCategories.contains("Monitoring"),
-                onToggle = {
-                    expandedCategories = if (expandedCategories.contains("Monitoring")) {
-                        expandedCategories - "Monitoring"
-                    } else {
-                        expandedCategories + "Monitoring"
-                    }
-                },
-                blocks = listOf(
-                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_LOG_GROUP),
-                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_METRIC_ALARM),
-                    createLibraryBlock(BlockType.MONITORING, ResourceType.XRAY_GROUP),
-                    createLibraryBlock(BlockType.MONITORING, ResourceType.CLOUDWATCH_DASHBOARD)
-                ),
-                onBlockSelected = onBlockSelected
-            )
+        // Dynamic categories based on available resources
+        resourceCategories.forEach { (blockType, resources) ->
+            item {
+                collapsibleCategory(
+                    name = blockType.name,
+                    isExpanded = expandedCategories.contains(blockType.name),
+                    onToggle = {
+                        expandedCategories = if (expandedCategories.contains(blockType.name)) {
+                            expandedCategories - blockType.name
+                        } else {
+                            expandedCategories + blockType.name
+                        }
+                    },
+                    blocks = resources.map { createLibraryBlock(blockType, it) },
+                    onBlockSelected = onBlockSelected
+                )
+            }
         }
     }
 }

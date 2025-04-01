@@ -19,6 +19,8 @@ class TerraformParser {
         val variables: List<TerraformVariable>
     )
 
+    private val categorizer = ResourceTypeCategorizer()
+
     fun parse(content: String): ParseResult {
         println("PARSER: Starting to parse content (${content.length} characters)")
 
@@ -214,17 +216,7 @@ class TerraformParser {
     }
 
     private fun determineBlockType(resourceType: ResourceType): BlockType {
-        return when (resourceType) {
-            ResourceType.LAMBDA_FUNCTION -> BlockType.COMPUTE
-            ResourceType.S3_BUCKET -> BlockType.DATABASE
-            ResourceType.DYNAMODB_TABLE -> BlockType.DATABASE
-            ResourceType.VPC -> BlockType.NETWORKING
-            ResourceType.SECURITY_GROUP -> BlockType.NETWORKING
-            ResourceType.IAM_ROLE, ResourceType.IAM_POLICY -> BlockType.SECURITY
-            ResourceType.CLOUDWATCH_LOG_GROUP -> BlockType.MONITORING
-            ResourceType.UNKNOWN -> BlockType.INTEGRATION
-            else -> BlockType.INTEGRATION
-        }
+        return categorizer.determineBlockType(resourceType)
     }
 
     private fun debugPrintStructure(map: Map<*, *>, indent: String = "") {

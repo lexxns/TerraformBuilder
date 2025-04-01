@@ -1,6 +1,7 @@
 package terraformbuilder.github
 
 import org.junit.Test
+import terraformbuilder.ResourceType
 import terraformbuilder.components.BlockType
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformParser
@@ -92,7 +93,7 @@ class GithubIntegrationTest {
         // Verify block types
         val lambdaBlock = blocks.find { it.resourceType == ResourceType.LAMBDA_FUNCTION }
         assertNotNull(lambdaBlock, "Should create Lambda Function block")
-        assertEquals(BlockType.COMPUTE, lambdaBlock.type)
+        assertEquals(BlockType.LAMBDA, lambdaBlock.type)
 
         val apiGatewayBlock = blocks.find { it.resourceType == ResourceType.API_GATEWAY_REST_API }
         assertNotNull(apiGatewayBlock, "Should create API Gateway block")

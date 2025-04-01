@@ -1,6 +1,7 @@
 package terraformbuilder.integration
 
 import org.junit.Test
+import terraformbuilder.ResourceType
 import terraformbuilder.components.BlockState
 import terraformbuilder.components.BlockType
 import terraformbuilder.github.GithubRepoInfo
@@ -81,7 +82,7 @@ class GitHubToTerraformTest {
         // Check for specific block types
         val lambdaBlock = blockState.blocks.find { it.resourceType == ResourceType.LAMBDA_FUNCTION }
         assertNotNull(lambdaBlock, "Should create Lambda function block")
-        assertEquals(BlockType.COMPUTE, lambdaBlock.type)
+        assertEquals(BlockType.LAMBDA, lambdaBlock.type)
 
         val apiGatewayBlock = blockState.blocks.find { it.resourceType == ResourceType.API_GATEWAY_REST_API }
         assertNotNull(apiGatewayBlock, "Should create API Gateway block")

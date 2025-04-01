@@ -1,6 +1,7 @@
 package terraformbuilder.terraform
 
 import org.junit.Test
+import terraformbuilder.ResourceType
 import terraformbuilder.components.BlockType
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -157,10 +158,10 @@ class TerraformParserTest {
 
         val lambdaBlock = blocks.find { it.resourceType == ResourceType.LAMBDA_FUNCTION }
         assertNotNull(lambdaBlock, "Should create Lambda Function block")
-        assertEquals(BlockType.COMPUTE, lambdaBlock.type)
+        assertEquals(BlockType.LAMBDA, lambdaBlock.type)
 
         val s3Block = blocks.find { it.resourceType == ResourceType.S3_BUCKET }
         assertNotNull(s3Block, "Should create S3 Bucket block")
-        assertEquals(BlockType.DATABASE, s3Block.type)
+        assertEquals(BlockType.STORAGE, s3Block.type)
     }
 } 
