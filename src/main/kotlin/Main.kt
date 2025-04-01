@@ -20,6 +20,7 @@ import terraformbuilder.components.editor
 import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen
+import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.VariableState
 
 @Composable
@@ -53,8 +54,6 @@ fun app() {
 
                 variableState.clearAll()
                 variables.forEach { variableState.addVariable(it) }
-
-                println("Loaded ${blocks.size} blocks and ${variables.size} variables")
             } catch (e: Exception) {
                 println("Error loading project: ${e.message}")
                 e.printStackTrace()
@@ -109,8 +108,6 @@ fun app() {
 
                 variableState.clearAll()
                 variables.forEach { variableState.addVariable(it) }
-
-                println("Loaded ${blocks.size} blocks and ${variables.size} variables")
             } catch (e: Exception) {
                 errorMessage = "Error loading project: ${e.message}"
             } finally {
@@ -300,6 +297,9 @@ fun app() {
 
 
 fun main() = application {
+    // Initialize schema at startup
+    TerraformProperties.initialize()
+
     Window(
         onCloseRequest = ::exitApplication,
         title = "Terraform Builder",

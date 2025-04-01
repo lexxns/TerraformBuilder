@@ -25,10 +25,7 @@ import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser
-import terraformbuilder.terraform.ResourceTypeCategorizer
-import terraformbuilder.terraform.TerraformParser
-import terraformbuilder.terraform.TerraformVariable
-import terraformbuilder.terraform.VariableState
+import terraformbuilder.terraform.*
 import java.util.*
 
 // Library block creation helper
@@ -213,7 +210,8 @@ fun editor(
                     selectedBlock = block.copy(
                         id = UUID.randomUUID().toString(),
                         content = generateDefaultName(resourceType),
-                        resourceType = resourceType
+                        resourceType = resourceType,
+                        description = block.description // Keep the description from the library block
                     )
                 },
                 onGithubClick = { showGithubDialog = true },
@@ -281,7 +279,9 @@ fun editor(
                 // Add new block when selected
                 LaunchedEffect(selectedBlock) {
                     selectedBlock?.let { block ->
-                        blockState.addBlock(block)
+                        // Get the description from the schema
+                        val description = TerraformProperties.getResourceDescription(block.resourceType)
+                        blockState.addBlock(block.copy(description = description))
                         selectedBlock = null
                     }
                 }
@@ -297,7 +297,8 @@ fun blockLibraryPanel(
     onGithubClick: () -> Unit,
     onVariablesClick: () -> Unit
 ) {
-    var expandedCategories by remember { mutableStateOf(setOf<String>()) }
+    var expandedCategories by remember { mutableStateOf(setOf<BlockType>()) }
+    var searchQuery by remember { mutableStateOf("") }
     val categorizer = remember { ResourceTypeCategorizer() }
     val resourceCategories = remember {
         ResourceType.entries
@@ -329,69 +330,104 @@ fun blockLibraryPanel(
             ) {
                 Text("Manage Variables")
             }
-        }
 
-        // Title
-        item {
-            Text("AWS Infrastructure", style = MaterialTheme.typography.h6)
-        }
-
-        // Dynamic categories based on available resources
-        resourceCategories.forEach { (blockType, resources) ->
-            item {
-                collapsibleCategory(
-                    name = blockType.name,
-                    isExpanded = expandedCategories.contains(blockType.name),
-                    onToggle = {
-                        expandedCategories = if (expandedCategories.contains(blockType.name)) {
-                            expandedCategories - blockType.name
-                        } else {
-                            expandedCategories + blockType.name
-                        }
-                    },
-                    blocks = resources.map { createLibraryBlock(blockType, it) },
-                    onBlockSelected = onBlockSelected
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun collapsibleCategory(
-    name: String,
-    isExpanded: Boolean,
-    onToggle: () -> Unit,
-    blocks: List<Block>,
-    onBlockSelected: (Block) -> Unit
-) {
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.subtitle1,
-                modifier = Modifier.weight(1f)
+            // Add search bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                placeholder = { Text("Search resources...") },
+                singleLine = true
             )
-            IconButton(onClick = onToggle) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand"
-                )
-            }
         }
 
-        if (isExpanded) {
-            for (block in blocks) {
-                blockItem(
-                    block = block,
-                    onClick = { onBlockSelected(block) }
-                )
+        // Add resource categories
+        resourceCategories.forEach { (category, resources) ->
+            // Filter resources based on search query
+            val filteredResources = resources.filter { resourceType ->
+                val matchesName = resourceType.displayName.contains(searchQuery, ignoreCase = true)
+                val matchesDescription = TerraformProperties.getResourceDescription(resourceType)
+                    .contains(searchQuery, ignoreCase = true)
+                matchesName || matchesDescription
+            }
+
+            // Only show category if it has matching resources
+            if (filteredResources.isNotEmpty()) {
+                // Category header
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                expandedCategories = if (category in expandedCategories) {
+                                    expandedCategories - category
+                                } else {
+                                    expandedCategories + category
+                                }
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (category in expandedCategories) {
+                                Icons.Default.KeyboardArrowUp
+                            } else {
+                                Icons.Default.KeyboardArrowDown
+                            },
+                            contentDescription = if (category in expandedCategories) {
+                                "Collapse $category"
+                            } else {
+                                "Expand $category"
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = category.name,
+                            style = MaterialTheme.typography.subtitle1
+                        )
+                    }
+                }
+
+                // Resource items if category is expanded
+                if (category in expandedCategories) {
+                    filteredResources.forEach { resourceType ->
+                        val description = TerraformProperties.getResourceDescription(resourceType)
+                        val block = createBlock(
+                            id = UUID.randomUUID().toString(),
+                            type = categorizer.determineBlockType(resourceType),
+                            content = resourceType.displayName,
+                            resourceType = resourceType,
+                            description = description
+                        )
+                        item {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onBlockSelected(block) }
+                                    .padding(vertical = 4.dp),
+                                elevation = 2.dp
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = resourceType.displayName,
+                                        style = MaterialTheme.typography.body1
+                                    )
+                                    if (description.isNotEmpty()) {
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.body2,
+                                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

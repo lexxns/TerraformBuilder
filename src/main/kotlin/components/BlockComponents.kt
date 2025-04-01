@@ -60,6 +60,7 @@ data class Block(
     val type: BlockType,
     var content: String,
     val resourceType: ResourceType,
+    val description: String = "",
     @Serializable(with = OffsetSerializer::class)
     var _position: Offset = Offset.Zero,
     @Serializable(with = OffsetSerializer::class)
@@ -280,8 +281,6 @@ class BlockState {
     }
 
     fun startConnectionDrag(block: Block, pointType: ConnectionPointType) {
-        println("BLOCKSTATE: Starting connection drag from ${block.content} with point type $pointType")
-
         // Initialize a new drag state
         dragState.isActive = true
         dragState.sourceBlock = block
@@ -290,8 +289,6 @@ class BlockState {
         // Set the initial position to the connection point's position
         val connectionPointPosition = block.getConnectionPointPosition(pointType)
         dragState.currentPosition = connectionPointPosition
-
-        println("BLOCKSTATE: Connection drag initialized at $connectionPointPosition")
     }
 
     fun updateDragPosition(position: Offset) {
@@ -397,13 +394,15 @@ fun createBlock(
     id: String,
     type: BlockType,
     content: String,
-    resourceType: ResourceType
+    resourceType: ResourceType,
+    description: String = ""
 ): Block {
     val block = Block(
         id = id,
         type = type,
         content = content,
-        resourceType = resourceType
+        resourceType = resourceType,
+        description = description
     )
 
     // Initialize default properties

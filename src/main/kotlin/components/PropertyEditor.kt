@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty
@@ -328,13 +330,21 @@ fun propertyEditor(
     onPropertyChange: (String, String) -> Unit,
     onRemove: (() -> Unit)? = null
 ) {
+    println("DEBUG: Rendering property editor for '${property.name}'")
+    println("DEBUG: Property description: '${property.description}'")
+    
+    var showTooltip by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
                     text = "${property.name}${if (property.required) " *" else ""}",
                     style = MaterialTheme.typography.subtitle2,
@@ -359,6 +369,46 @@ fun propertyEditor(
                         style = MaterialTheme.typography.caption,
                         color = Color.Gray
                     )
+                }
+
+                // Add help icon with tooltip for property description
+                if (property.description.isNotEmpty()) {
+                    println("DEBUG: Showing help icon for '${property.name}'")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box {
+                        IconButton(
+                            onClick = { showTooltip = !showTooltip },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Help,
+                                contentDescription = "Show property description",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colors.primary
+                            )
+                        }
+                        if (showTooltip) {
+                            Popup(
+                                onDismissRequest = { showTooltip = false }
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .padding(4.dp)
+                                        .widthIn(max = 300.dp),
+                                    shape = RoundedCornerShape(4.dp),
+                                    elevation = 4.dp,
+                                    color = MaterialTheme.colors.surface
+                                ) {
+                                    Text(
+                                        text = property.description,
+                                        style = MaterialTheme.typography.body2,
+                                        modifier = Modifier.padding(8.dp),
+                                        maxLines = 5
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -397,7 +447,6 @@ fun propertyEditor(
                             value = it
                             onPropertyChange(property.name, it)
                         },
-                        label = { Text(property.description) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -664,7 +713,7 @@ fun propertyEditorPanel(
             // Title with resource icon
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -679,10 +728,18 @@ fun propertyEditorPanel(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Text(
-                    text = "$blockContent properties",
+                    text = blockContent,
                     style = MaterialTheme.typography.h6
                 )
             }
+
+            // Block description
+            Text(
+                text = block.description,
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
 
             if (allProperties.isEmpty()) {
                 Text(

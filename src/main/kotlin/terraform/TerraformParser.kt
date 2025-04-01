@@ -22,14 +22,11 @@ class TerraformParser {
     private val categorizer = ResourceTypeCategorizer()
 
     fun parse(content: String): ParseResult {
-        println("PARSER: Starting to parse content (${content.length} characters)")
-
         try {
             val parser = HCLParser()
             val result = parser.parse(StringReader(content))
 
             // Debug print the raw structure first
-            println("PARSER: Raw parsed structure:")
             debugPrintStructure(result)
 
             return ParseResult(
@@ -37,7 +34,6 @@ class TerraformParser {
                 variables = parseVariables(result)
             )
         } catch (e: Exception) {
-            println("PARSER: Error parsing HCL content: ${e.message}")
             e.printStackTrace()
             return ParseResult(emptyList(), emptyList())
         }
@@ -47,16 +43,12 @@ class TerraformParser {
         val resources = mutableListOf<TerraformResource>()
 
         hclContent.forEach { (key, value) ->
-            println("PARSER: Processing top-level key: $key")
-
             when (key) {
                 "resource" -> parseResourceBlocks(value, resources)
                 "module" -> parseModuleBlocks(value, resources)
                 "data" -> println("PARSER: Found data block (not processing)")
             }
         }
-
-        println("PARSER: Found ${resources.size} resources")
         return resources
     }
 
@@ -121,7 +113,6 @@ class TerraformParser {
     private fun parseResourceInstances(type: String, instances: Any?, resources: MutableList<TerraformResource>) {
         if (instances is Map<*, *>) {
             instances.forEach { (name, props) ->
-                println("PARSER: Processing resource: $type.$name")
                 if (props is Map<*, *>) {
                     @Suppress("UNCHECKED_CAST")
                     resources.add(
@@ -137,7 +128,6 @@ class TerraformParser {
     }
 
     private fun parseVariables(hclContent: Map<*, *>): List<TerraformVariable> {
-        println("PARSER: Starting to parse variables")
         val variables = mutableListOf<TerraformVariable>()
 
         hclContent["variable"]?.let { variableBlocks ->
@@ -164,7 +154,6 @@ class TerraformParser {
             }
         }
 
-        println("PARSER: Found ${variables.size} variables")
         return variables
     }
 
@@ -208,10 +197,9 @@ class TerraformParser {
                     else -> "${ResourceType.fromResourceName(resource.type).displayName}: ${resource.name}"
                 },
                 resourceType = ResourceType.fromResourceName(resource.type),
+                description = TerraformProperties.getResourceDescription(ResourceType.fromResourceName(resource.type)),
                 properties = stringProperties.toMutableMap()
-            ).apply {
-                println("PARSER: Created block: $content with properties: ${stringProperties.keys}")
-            }
+            )
         }
     }
 

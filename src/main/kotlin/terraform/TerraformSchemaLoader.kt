@@ -17,7 +17,8 @@ class TerraformSchemaLoader {
             .path("registry.terraform.io/hashicorp/aws")
             .path("resource_schemas")
 
-        return Pair(awsSchema, buildResourceMap(awsSchema))
+        val result = Pair(awsSchema, buildResourceMap(awsSchema))
+        return result
     }
 
     private fun getSchemaForVersion(version: String): InputStream {
@@ -44,13 +45,32 @@ class TerraformSchemaLoader {
 
     private fun buildResourceMap(schema: JsonNode): Map<ResourceType, List<TerraformProperty>> {
         val result = mutableMapOf<ResourceType, List<TerraformProperty>>()
+        val descriptions = mutableMapOf<ResourceType, String>()
 
         ResourceType.entries.forEach { resourceType ->
             if (resourceType != ResourceType.UNKNOWN) {
                 val resourceSchema = schema.path(resourceType.resourceName)
                 if (!resourceSchema.isMissingNode) {
+                    // Get the description from the block section
+                    val blockNode = resourceSchema.path("block")
+                    if (!blockNode.isMissingNode) {
+                        val description = blockNode.path("description").asText("")
+                        descriptions[resourceType] = description
+                    }
                     result[resourceType] = extractProperties(resourceSchema)
                 }
+            }
+        }
+
+        // Store the descriptions in the TerraformProperties object
+        TerraformProperties.setResourceDescriptions(descriptions)
+
+        // Log which resources have properties with descriptions
+        println("\nResources with properties containing descriptions:")
+        result.forEach { (resourceType, properties) ->
+            val propertiesWithDescriptions = properties.count { it.description.isNotEmpty() }
+            if (propertiesWithDescriptions > 0) {
+                println("${resourceType.name}: $propertiesWithDescriptions properties with descriptions")
             }
         }
 
@@ -115,7 +135,6 @@ class TerraformSchemaLoader {
 
         attributes.fields().forEach { (name, details) ->
             val description = details.path("description").asText("")
-
             val type = when (details.path("type").asText()) {
                 "string" -> {
                     // Check if this string might be a JSON policy

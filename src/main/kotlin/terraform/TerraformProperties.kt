@@ -25,13 +25,40 @@ enum class PropertyType {
 // Map of block types to their available properties
 object TerraformProperties {
     private val schemaLoader = TerraformSchemaLoader()
-    private var currentSchema: Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>> = loadLatestSchema()
+    private var currentSchema: Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>>? = null
+    private var resourceDescriptions: Map<ResourceType, String> = emptyMap()
+
+    /**
+     * Initialize the schema. This should be called once at application startup.
+     */
+    fun initialize() {
+        if (currentSchema == null) {
+            currentSchema = loadLatestSchema()
+        }
+    }
 
     /**
      * Get the properties for a specific block
      */
     fun getPropertiesForBlock(block: Block): List<TerraformProperty> {
-        return currentSchema.second[block.resourceType] ?: emptyList()
+        if (currentSchema == null) {
+            initialize()
+        }
+        return currentSchema!!.second[block.resourceType] ?: emptyList()
+    }
+
+    /**
+     * Get the description for a specific resource type
+     */
+    fun getResourceDescription(resourceType: ResourceType): String {
+        return resourceDescriptions[resourceType] ?: "No Resource Description Available."
+    }
+
+    /**
+     * Set the resource descriptions (internal use only)
+     */
+    internal fun setResourceDescriptions(descriptions: Map<ResourceType, String>) {
+        resourceDescriptions = descriptions
     }
 
     private fun loadLatestSchema(): Pair<List<ResourceType>, Map<ResourceType, List<TerraformProperty>>> {
