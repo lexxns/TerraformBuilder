@@ -30,26 +30,32 @@ class ResourceTypeGenerator {
             .toList()
 
         val enumCode = buildString {
-            append("""
+            append(
+                """
                 package terraformbuilder
+                
+                import kotlinx.serialization.Serializable
                 
                 /**
                  * Generated enum representing AWS resource types that can be used in Terraform
                  */
+                @Serializable
                 enum class ResourceType(val displayName: String, val resourceName: String) {
-            """.trimIndent())
+            """.trimIndent()
+            )
             append("\n")
-            
+
             // Add all resource types
             resourceTypes.forEach { (enumName, displayName, resourceName) ->
                 append("    $enumName(\"$displayName\", \"$resourceName\"),\n")
             }
-            
+
             // Add UNKNOWN entry
             append("    UNKNOWN(\"Unknown Resource\", \"unknown\");\n\n")
-            
+
             // Add companion object
-            append("""
+            append(
+                """
                     companion object {
                         fun fromResourceName(resourceName: String): ResourceType {
                             return entries.find { it.resourceName == resourceName } ?: UNKNOWN
@@ -59,7 +65,8 @@ class ResourceTypeGenerator {
                         }
                     }
                 }
-            """.trimIndent())
+            """.trimIndent()
+            )
         }
 
         outputFile.parentFile.mkdirs()

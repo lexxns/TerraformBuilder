@@ -2,13 +2,10 @@ package terraformbuilder.components
 
 import androidx.compose.ui.geometry.Offset
 import org.junit.Test
-import terraformbuilder.Block
-import terraformbuilder.BlockType
-import terraformbuilder.ResourceType
 import kotlin.test.assertEquals
 
 class BlockViewTest {
-    
+
     @Test
     fun testBlockProperties() {
         // Create a test block
@@ -22,7 +19,7 @@ class BlockViewTest {
             setProperty("function_name", "my-test-function")
             setProperty("runtime", "nodejs18.x")
         }
-        
+
         // Verify the block properties
         assertEquals("Test Lambda", testBlock.content)
         assertEquals(BlockType.COMPUTE, testBlock.type)
@@ -30,7 +27,7 @@ class BlockViewTest {
         assertEquals("my-test-function", testBlock.getProperty("function_name"))
         assertEquals("nodejs18.x", testBlock.getProperty("runtime"))
     }
-    
+
     @Test
     fun testBlockPositioning() {
         // Create a test block
@@ -41,25 +38,25 @@ class BlockViewTest {
             resourceType = ResourceType.DYNAMODB_TABLE,
             _position = Offset(100f, 100f)
         )
-        
+
         // Verify initial position
         assertEquals(Offset(100f, 100f), testBlock.position)
-        
+
         // Update position
         testBlock.position = Offset(200f, 300f)
-        
+
         // Verify updated position
         assertEquals(Offset(200f, 300f), testBlock.position)
-        
+
         // Verify that connection points were updated
-        val inputPoint = testBlock.getConnectionPointPosition(terraformbuilder.ConnectionPointType.INPUT)
-        val outputPoint = testBlock.getConnectionPointPosition(terraformbuilder.ConnectionPointType.OUTPUT)
-        
+        val inputPoint = testBlock.getConnectionPointPosition(ConnectionPointType.INPUT)
+        val outputPoint = testBlock.getConnectionPointPosition(ConnectionPointType.OUTPUT)
+
         // Verify connection points are relative to the new block position
         assertEquals(200f - 6f, inputPoint.x) // Input point is 6 units to the left
         assertEquals(300f + testBlock.size.y / 2f, inputPoint.y) // Vertically centered
     }
-    
+
     @Test
     fun testBlockRenaming() {
         // Create a test block
@@ -70,13 +67,13 @@ class BlockViewTest {
             resourceType = ResourceType.VPC,
             _position = Offset(100f, 100f)
         )
-        
+
         // Test initial content
         assertEquals("Test VPC", testBlock.content)
-        
+
         // Update content (rename block)
         testBlock.content = "Renamed VPC"
-        
+
         // Verify content was updated
         assertEquals("Renamed VPC", testBlock.content)
     }

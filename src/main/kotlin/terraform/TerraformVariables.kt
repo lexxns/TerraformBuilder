@@ -1,7 +1,9 @@
 package terraformbuilder.terraform
 
 import androidx.compose.runtime.mutableStateListOf
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class TerraformVariable(
     val name: String,
     val type: VariableType,
@@ -22,8 +24,15 @@ enum class VariableType {
     }
 }
 
+@Serializable
+data class VariableValidation(
+    val condition: String,
+    val errorMessage: String
+)
+
+@Serializable
 class VariableState {
-    private val _variables = mutableStateListOf<TerraformVariable>()
+    private var _variables = mutableListOf<TerraformVariable>()
     val variables: List<TerraformVariable> = _variables
 
     fun addVariable(variable: TerraformVariable) {

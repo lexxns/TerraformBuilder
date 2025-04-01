@@ -22,8 +22,6 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import terraformbuilder.Block
-import terraformbuilder.BlockType
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty

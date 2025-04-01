@@ -32,6 +32,10 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation("com.bertramlabs.plugins:hcl4j:0.9.4")
 
+    // Add Material Icons dependency
+    implementation("org.jetbrains.compose.material:material-icons-core:1.5.11")
+    implementation("org.jetbrains.compose.material:material-icons-extended:1.5.11")
+
     // Add SLF4J implementation
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("org.slf4j:slf4j-simple:2.0.17")
