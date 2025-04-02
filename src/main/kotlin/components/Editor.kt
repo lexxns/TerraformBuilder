@@ -1,14 +1,10 @@
 package terraformbuilder.components
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -16,8 +12,17 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -63,8 +68,25 @@ fun editor(
     var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current.density
 
+    // Add pan and zoom state
+    var panOffset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember { mutableStateOf(1f) }
+    val focusRequester = remember { FocusRequester() }
+
     // Track when the mouse button is down during a drag
     var isMouseDown by remember { mutableStateOf(false) }
+
+    // Force recomposition when any block content changes
+    val blockContentVersion = remember { mutableStateOf(0) }
+    
+    var isPanning by remember { mutableStateOf(false) }
+    var lastPanPosition by remember { mutableStateOf(Offset.Zero) }
+
+
+    // Handle keyboard events for panning and zooming
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     // When blocks start a connection, update our state
     val onConnectionDragStart: (Block, ConnectionPointType) -> Unit = { block, pointType ->
@@ -81,6 +103,8 @@ fun editor(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     var showVariablesDialog by remember { mutableStateOf(false) }
+    var selectedBlockId by remember { mutableStateOf<String?>(null) }
+    var hoveredBlockId by remember { mutableStateOf<String?>(null) }
 
     if (showGithubDialog) {
         GithubUrlDialog(
@@ -172,7 +196,7 @@ fun editor(
     }
 
     // Main layout
-    Box(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // File Menu
         Box(
             modifier = Modifier
@@ -192,11 +216,7 @@ fun editor(
         }
 
         // Content area
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 48.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxSize()) {
             // Block Library Panel
             blockLibraryPanel(
                 modifier = Modifier
@@ -218,37 +238,80 @@ fun editor(
                 onVariablesClick = { showVariablesDialog = true }
             )
 
-            // Workspace Area
+            // Workspace Area - the key is to have this area properly clipped
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.White)
+                    .clip(RectangleShape) // Ensure clipping
+                    .focusRequester(focusRequester)
                     .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                hoverPosition = offset
-                                hoverDpPosition = offset.toDpOffset(density)
-                                println("WORKSPACE: Drag started at position: $offset, dp: $hoverDpPosition")
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                hoverPosition = change.position
-                                hoverDpPosition = change.position.toDpOffset(density)
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pointer = event.changes.firstOrNull()
 
-                                // Update connection drag position if active
-                                if (blockState.dragState.isActive) {
-                                    blockState.updateDragPosition(hoverDpPosition)
+                                if (pointer != null) {
+                                    // Update hover position regardless
+                                    hoverPosition = pointer.position
+                                    hoverDpPosition = pointer.position.toDpOffset(density)
+
+                                    when {
+                                        // Mouse pressed - start panning or connection drag
+                                        pointer.pressed && !isPanning && !blockState.dragState.isActive -> {
+                                            // Check if we're about to start a connection drag (e.g., over a connection point)
+                                            val connectionDrag =
+                                                false // Your logic to determine if this is a connection drag
+
+                                            if (!connectionDrag) {
+                                                isPanning = true
+                                                lastPanPosition = pointer.position
+                                            }
+                                        }
+
+                                        // Mouse moved while pressed - handle panning
+                                        pointer.pressed && isPanning -> {
+                                            val dragAmount = pointer.position - lastPanPosition
+
+                                            // Apply panning with increased speed
+                                            panOffset += Offset(dragAmount.x * 3f, dragAmount.y * 3f)
+
+                                            // Update last position
+                                            lastPanPosition = pointer.position
+                                        }
+
+                                        // Mouse released - end panning
+                                        !pointer.pressed && isPanning -> {
+                                            isPanning = false
+                                        }
+
+                                        // Connection drag handling
+                                        blockState.dragState.isActive -> {
+                                            blockState.updateDragPosition(hoverDpPosition)
+
+                                            if (!pointer.pressed) {
+                                                blockState.endConnectionDrag(hoverDpPosition)
+                                            }
+                                        }
+                                    }
+
+                                    // Consume the event
+                                    pointer.consume()
                                 }
-                            },
-                            onDragEnd = {
-                                println("WORKSPACE: Drag ended at position: $hoverDpPosition")
-                                // When the drag ends, complete any active connection
-                                if (blockState.dragState.isActive) {
-                                    blockState.endConnectionDrag(hoverDpPosition)
-                                }
-                                isMouseDown = false
                             }
-                        )
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { centroid, pan, zoom, rotation ->
+                            // Handle zoom
+                            val oldScale = scale
+                            scale = (scale * zoom).coerceIn(0.1f, 5f)
+
+                            // Adjust pan offset to maintain zoom point
+                            val newScaleFactor = scale / oldScale
+                            val centroidOffset = centroid - panOffset
+                            panOffset = centroid - (centroidOffset * newScaleFactor)
+                        }
                     }
                     // Add separate pointer input for mouse moves without dragging
                     .pointerInput(Unit) {
@@ -268,21 +331,167 @@ fun editor(
                             }
                         }
                     }
-            ) {
-                workspaceArea(
-                    modifier = Modifier.fillMaxSize(),
-                    blockState = blockState,
-                    hoverDpPosition = hoverDpPosition,
-                    onConnectionDragStart = onConnectionDragStart
-                )
+                    // Handle keyboard events for panning and zooming
+                    .onKeyEvent { keyEvent ->
+                        // Much faster panning with keyboard (100 units instead of 20)
+                        val panAmount = 100f
 
-                // Add new block when selected
-                LaunchedEffect(selectedBlock) {
-                    selectedBlock?.let { block ->
-                        // Get the description from the schema
-                        val description = TerraformProperties.getResourceDescription(block.resourceType)
-                        blockState.addBlock(block.copy(description = description))
-                        selectedBlock = null
+                        when (keyEvent.key) {
+                            Key.DirectionLeft -> {
+                                // Create a brand new Offset to ensure state change detection
+                                panOffset = Offset(panOffset.x + panAmount, panOffset.y)
+                                true
+                            }
+
+                            Key.DirectionRight -> {
+                                // Create a brand new Offset to ensure state change detection
+                                panOffset = Offset(panOffset.x - panAmount, panOffset.y)
+                                true
+                            }
+
+                            Key.DirectionUp -> {
+                                // Create a brand new Offset to ensure state change detection
+                                panOffset = Offset(panOffset.x, panOffset.y + panAmount)
+                                true
+                            }
+
+                            Key.DirectionDown -> {
+                                // Create a brand new Offset to ensure state change detection
+                                panOffset = Offset(panOffset.x, panOffset.y - panAmount)
+                                true
+                            }
+
+                            Key.Minus -> {
+                                // Create a brand new Offset to ensure state change detection
+                                var newScale = (scale * 0.9f).coerceIn(0.1f, 5f)
+                                // Only update if there's a meaningful change
+                                if (newScale != scale) {
+                                    scale = newScale
+                                }
+                                true
+                            }
+
+                            Key.Plus, Key.Equals -> {
+                                // Create a brand new Offset to ensure state change detection
+                                var newScale = (scale * 1.1f).coerceIn(0.1f, 5f)
+                                // Only update if there's a meaningful change
+                                if (newScale != scale) {
+                                    scale = newScale
+                                }
+                                true
+                            }
+
+                            else -> false
+                        }
+                    }
+            ) {
+                // This Box applies the transformation
+                Box(
+                    modifier = Modifier
+                        .matchParentSize() // Fill the workspace area
+                        .graphicsLayer(
+                            translationX = panOffset.x,
+                            translationY = panOffset.y,
+                            scaleX = scale,
+                            scaleY = scale
+                        )
+                ) {
+                    // Draw grid pattern
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val gridSize = 50f
+                        val gridColor = Color(0xFFE0E0E0)
+
+                        // Draw vertical lines
+                        var x = 0f
+                        while (x < size.width) {
+                            drawLine(
+                                color = gridColor,
+                                start = Offset(x, 0f),
+                                end = Offset(x, size.height),
+                                strokeWidth = 1f,
+                                cap = StrokeCap.Round
+                            )
+                            x += gridSize
+                        }
+
+                        // Draw horizontal lines
+                        var y = 0f
+                        while (y < size.height) {
+                            drawLine(
+                                color = gridColor,
+                                start = Offset(0f, y),
+                                end = Offset(size.width, y),
+                                strokeWidth = 1f,
+                                cap = StrokeCap.Round
+                            )
+                            y += gridSize
+                        }
+                    }
+
+                    // Draw connections between blocks
+                    connectionCanvas(
+                        connections = blockState.connections,
+                        dragState = blockState.dragState,
+                        blocks = blockState.blocks,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Draw blocks
+                    for (block in blockState.blocks) {
+                        blockView(
+                            block = block,
+                            onDragEnd = { newPosition ->
+                                blockState.updateBlockPosition(block.id, newPosition)
+                            },
+                            onRename = { newContent ->
+                                println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
+                                blockState.updateBlockContent(block.id, newContent)
+                                blockContentVersion.value++
+                                println("WORKSPACE: Incremented block content version to ${blockContentVersion.value}")
+                            },
+                            onConnectionDragStart = onConnectionDragStart,
+                            onUpdateBlockSize = { blockId, size ->
+                                blockState.updateBlockSize(blockId, size)
+                            },
+                            onBlockSelected = { blockId ->
+                                selectedBlockId = blockId
+                                println("Block selected through click: $blockId")
+                            },
+                            // Pass hover state to block
+                            isHovered = hoveredBlockId == block.id,
+                            // Pass the active drag state to determine connection point visibility
+                            activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
+                        )
+                    }
+
+                    // Add new block when selected
+                    LaunchedEffect(selectedBlock) {
+                        selectedBlock?.let { block ->
+                            // Get the description from the schema
+                            val description = TerraformProperties.getResourceDescription(block.resourceType)
+                            blockState.addBlock(block.copy(description = description))
+                            selectedBlock = null
+                        }
+                    }
+                }
+
+                // Display property editor for selected block
+                selectedBlockId?.let { id ->
+                    key(id, blockContentVersion.value) {
+                        val block = blockState.blocks.find { it.id == id }
+                        block?.let {
+                            // Property editor panel
+                            propertyEditorPanel(
+                                block = block,
+                                onPropertyChange = { propertyName, propertyValue ->
+                                    blockState.updateBlockProperty(id, propertyName, propertyValue)
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(16.dp)
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
                     }
                 }
             }
@@ -360,7 +569,7 @@ fun blockLibraryPanel(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { 
+                            .clickable {
                                 expandedCategories = if (category in expandedCategories) {
                                     expandedCategories - category
                                 } else {
@@ -427,130 +636,6 @@ fun blockLibraryPanel(
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun workspaceArea(
-    modifier: Modifier = Modifier,
-    blockState: BlockState,
-    hoverDpPosition: Offset,
-    onConnectionDragStart: (Block, ConnectionPointType) -> Unit
-) {
-    // State to track clicked positions for debugging
-    var clickedPosition by remember { mutableStateOf<Offset?>(null) }
-    var clickedDpPosition by remember { mutableStateOf<Offset?>(null) }
-    var selectedBlockId by remember { mutableStateOf<String?>(null) }
-    var hoveredBlockId by remember { mutableStateOf<String?>(null) }
-    val density = LocalDensity.current.density
-
-    // Force recomposition when any block content changes
-    val blockContentVersion = remember { mutableStateOf(0) }
-
-    // Check if mouse is hovering over any block (recalculate when mouse moves)
-    LaunchedEffect(hoverDpPosition) {
-        val newHoveredBlockId = blockState.blocks.find { block ->
-            // Create an expanded hit area that includes connection points
-            val connectionPointWidth = 16f // Width of connection points in dp
-            val blockLeft = block.position.x - connectionPointWidth // Expand left to include input connection point
-            val blockRight =
-                block.position.x + block.size.x + connectionPointWidth // Expand right to include output connection point
-            val blockTop = block.position.y
-            val blockBottom = blockTop + block.size.y
-
-            hoverDpPosition.x in blockLeft..blockRight && hoverDpPosition.y in blockTop..blockBottom
-        }?.id
-
-        // Only update if changed to avoid unnecessary recompositions
-        if (hoveredBlockId != newHoveredBlockId) {
-            hoveredBlockId = newHoveredBlockId
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFF8F8F8))
-            .pointerInput(Unit) {
-                detectTapGestures { position ->
-                    // Record clicked position for debugging
-                    clickedPosition = position
-                    clickedDpPosition = position.toDpOffset(density)
-
-                    // Check if we clicked on a block for property editing
-                    val dpPos = position.toDpOffset(density)
-                    val clickedBlockId = blockState.blocks.find { block ->
-                        // Check if the click (in dp) is within the block bounds (also in dp)
-                        val blockLeft = block.position.x
-                        val blockRight = blockLeft + block.size.x
-                        val blockTop = block.position.y
-                        val blockBottom = blockTop + block.size.y
-
-                        dpPos.x in blockLeft..blockRight && dpPos.y in blockTop..blockBottom
-                    }?.id
-
-                    // Update selected block (null if clicked on empty space)
-                    selectedBlockId = clickedBlockId
-
-                    println("Workspace click: ${if (clickedBlockId != null) "Selected block $clickedBlockId" else "Deselected block"}")
-                }
-            }
-    ) {
-        // Draw connections between blocks
-        connectionCanvas(
-            connections = blockState.connections,
-            dragState = blockState.dragState,
-            blocks = blockState.blocks,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Draw blocks
-        for (block in blockState.blocks) {
-            blockView(
-                block = block,
-                onDragEnd = { newPosition ->
-                    blockState.updateBlockPosition(block.id, newPosition)
-                },
-                onRename = { newContent ->
-                    println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
-                    blockState.updateBlockContent(block.id, newContent)
-                    blockContentVersion.value++
-                    println("WORKSPACE: Incremented block content version to ${blockContentVersion.value}")
-                },
-                onConnectionDragStart = onConnectionDragStart,
-                onUpdateBlockSize = { blockId, size ->
-                    blockState.updateBlockSize(blockId, size)
-                },
-                onBlockSelected = { blockId ->
-                    selectedBlockId = blockId
-                    println("Block selected through click: $blockId")
-                },
-                // Pass hover state to block
-                isHovered = hoveredBlockId == block.id,
-                // Pass the active drag state to determine connection point visibility
-                activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
-            )
-        }
-
-        // Display property editor for selected block
-        selectedBlockId?.let { id ->
-            key(id, blockContentVersion.value) {
-                val block = blockState.blocks.find { it.id == id }
-                block?.let {
-                    // Property editor panel
-                    propertyEditorPanel(
-                        block = block,
-                        onPropertyChange = { propertyName, propertyValue ->
-                            blockState.updateBlockProperty(id, propertyName, propertyValue)
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
                 }
             }
         }
