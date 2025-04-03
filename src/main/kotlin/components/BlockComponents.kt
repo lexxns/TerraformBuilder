@@ -441,6 +441,7 @@ object BlockTypeColors {
 @Composable
 fun blockView(
     block: Block,
+    onDragStart: () -> Unit,
     onDragEnd: (Offset) -> Unit,
     onRename: (String) -> Unit,
     onConnectionDragStart: (Block, ConnectionPointType) -> Unit,
@@ -597,12 +598,11 @@ fun blockView(
                 .pointerInput("drag") {
                     detectDragGestures(
                         onDragStart = {
-                            println("BLOCK-DRAG-START: Started dragging block ${block.id}")
-                            // Cancel editing if dragging starts
                             if (isEditing) {
                                 isEditing = false
                                 onRename(textFieldValue.text)
                             }
+                            onDragStart()
                         },
                         onDragEnd = {
                             println("BLOCK-DRAG-END: Ended dragging block ${block.id}")

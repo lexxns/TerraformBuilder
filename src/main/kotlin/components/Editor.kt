@@ -2,7 +2,7 @@ package terraformbuilder.components
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.*
@@ -20,9 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -75,17 +72,95 @@ fun editor(
 
     // Track when the mouse button is down during a drag
     var isMouseDown by remember { mutableStateOf(false) }
+    var isPanning by remember { mutableStateOf(false) }
+    var lastPanPosition by remember { mutableStateOf(Offset.Zero) }
+    var draggedBlockId by remember { mutableStateOf<String?>(null) }
+    var lastClickPosition by remember { mutableStateOf<Offset?>(null) }
+    var dragStartPosition by remember { mutableStateOf<Offset?>(null) }
+    var dragStartBlockId by remember { mutableStateOf<String?>(null) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragThreshold by remember { mutableStateOf(5f) } // Minimum distance to consider a drag
 
     // Force recomposition when any block content changes
     val blockContentVersion = remember { mutableStateOf(0) }
-    
-    var isPanning by remember { mutableStateOf(false) }
-    var lastPanPosition by remember { mutableStateOf(Offset.Zero) }
-
 
     // Handle keyboard events for panning and zooming
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+
+        // Force an initial composition/draw cycle
+        panOffset = Offset.Zero
+        scale = 1f
+
+        // If there are blocks, center on them
+        if (blockState.blocks.isNotEmpty()) {
+            // Find the center of all blocks
+            var minX = Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxX = Float.MIN_VALUE
+            var maxY = Float.MIN_VALUE
+
+            blockState.blocks.forEach { block ->
+                val left = block.position.x
+                val top = block.position.y
+                val right = left + block.size.x
+                val bottom = top + block.size.y
+
+                minX = minOf(minX, left)
+                minY = minOf(minY, top)
+                maxX = maxOf(maxX, right)
+                maxY = maxOf(maxY, bottom)
+            }
+
+            // Center the view on the blocks
+            if (minX != Float.MAX_VALUE) {
+                val centerX = (minX + maxX) / 2
+                val centerY = (minY + maxY) / 2
+
+                // Set initial pan to center blocks
+                panOffset = Offset(
+                    -centerX + 400,
+                    -centerY + 300
+                )
+            }
+        }
+    }
+
+    // Helper function to convert screen coordinates to workspace coordinates
+    fun screenToWorkspace(screenPos: Offset): Offset {
+        // First convert to dp
+        val dpPos = screenPos.toDpOffset(density)
+        // Then apply inverse transform (pan and scale)
+        return (dpPos - panOffset) / scale
+    }
+
+    // Helper function to convert workspace coordinates to screen coordinates
+    fun workspaceToScreen(workspacePos: Offset): Offset {
+        // Apply transform (scale and pan)
+        val screenPos = workspacePos * scale + panOffset
+        // Convert to pixels
+        return Offset(screenPos.x * density, screenPos.y * density)
+    }
+
+    fun isPointInBlock(workspacePoint: Offset, block: Block): Boolean {
+        // Point is already in workspace coordinates
+        return workspacePoint.x >= block.position.x &&
+                workspacePoint.x <= block.position.x + block.size.x &&
+                workspacePoint.y >= block.position.y &&
+                workspacePoint.y <= block.position.y + block.size.y
+    }
+
+    fun findBlockAtPoint(point: Offset): Block? {
+        // Convert point to workspace coordinates
+        val workspacePoint = screenToWorkspace(point)
+        return blockState.blocks.find { block -> isPointInBlock(workspacePoint, block) }
+    }
+
+    // Helper function to calculate drag amount in workspace coordinates
+    fun calculateWorkspaceDragAmount(currentPos: Offset, startPos: Offset): Offset {
+        val currentWorkspace = screenToWorkspace(currentPos)
+        val startWorkspace = screenToWorkspace(startPos)
+        return currentWorkspace - startWorkspace
     }
 
     // When blocks start a connection, update our state
@@ -231,164 +306,103 @@ fun editor(
                         id = UUID.randomUUID().toString(),
                         content = generateDefaultName(resourceType),
                         resourceType = resourceType,
-                        description = block.description // Keep the description from the library block
+                        description = block.description
                     )
                 },
                 onGithubClick = { showGithubDialog = true },
                 onVariablesClick = { showVariablesDialog = true }
             )
 
-            // Workspace Area - the key is to have this area properly clipped
+            // Workspace Area
+            // Modified pointerInput for stable panning
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.White)
-                    .clip(RectangleShape) // Ensure clipping
+                    .clip(RectangleShape)
                     .focusRequester(focusRequester)
                     .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val pointer = event.changes.firstOrNull()
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                isMouseDown = true
+                                isDragging = false
+                                dragStartPosition = offset
 
-                                if (pointer != null) {
-                                    // Update hover position regardless
-                                    hoverPosition = pointer.position
-                                    hoverDpPosition = pointer.position.toDpOffset(density)
+                                // Find block at click position
+                                val workspacePoint = screenToWorkspace(offset)
+                                val blockAtPoint = blockState.blocks.find { block ->
+                                    workspacePoint.x >= block.position.x &&
+                                            workspacePoint.x <= block.position.x + block.size.x &&
+                                            workspacePoint.y >= block.position.y &&
+                                            workspacePoint.y <= block.position.y + block.size.y
+                                }
 
-                                    when {
-                                        // Mouse pressed - start panning or connection drag
-                                        pointer.pressed && !isPanning && !blockState.dragState.isActive -> {
-                                            // Check if we're about to start a connection drag (e.g., over a connection point)
-                                            val connectionDrag =
-                                                false // Your logic to determine if this is a connection drag
+                                if (blockAtPoint != null) {
+                                    // Start dragging the block - LOCK the mode to block dragging
+                                    draggedBlockId = blockAtPoint.id
+                                    dragStartBlockId = blockAtPoint.id
+                                    selectedBlockId = blockAtPoint.id
+                                    isPanning = false  // Ensure we're not in panning mode
+                                } else {
+                                    // Start panning - LOCK the mode to panning
+                                    isPanning = true
+                                    lastPanPosition = offset
+                                    // Clear any block dragging state
+                                    draggedBlockId = null
+                                    dragStartBlockId = null
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                isDragging = true
 
-                                            if (!connectionDrag) {
-                                                isPanning = true
-                                                lastPanPosition = pointer.position
-                                            }
-                                        }
-
-                                        // Mouse moved while pressed - handle panning
-                                        pointer.pressed && isPanning -> {
-                                            val dragAmount = pointer.position - lastPanPosition
-
-                                            // Apply panning with increased speed
-                                            panOffset += Offset(dragAmount.x * 3f, dragAmount.y * 3f)
-
-                                            // Update last position
-                                            lastPanPosition = pointer.position
-                                        }
-
-                                        // Mouse released - end panning
-                                        !pointer.pressed && isPanning -> {
-                                            isPanning = false
-                                        }
-
-                                        // Connection drag handling
-                                        blockState.dragState.isActive -> {
-                                            blockState.updateDragPosition(hoverDpPosition)
-
-                                            if (!pointer.pressed) {
-                                                blockState.endConnectionDrag(hoverDpPosition)
-                                            }
-                                        }
+                                // Use completely separate code paths based on the initial mode
+                                if (isPanning) {
+                                    // We're in panning mode - just update the pan offset directly
+                                    // Don't recalculate anything or check for blocks
+                                    panOffset += dragAmount
+                                } else if (draggedBlockId != null && dragStartPosition != null) {
+                                    // We're in block dragging mode
+                                    val block = blockState.blocks.find { it.id == draggedBlockId }
+                                    if (block != null) {
+                                        val workspaceDragAmount =
+                                            calculateWorkspaceDragAmount(change.position, dragStartPosition!!)
+                                        val newPosition = block.position + workspaceDragAmount
+                                        blockState.updateBlockPosition(block.id, newPosition)
+                                        dragStartPosition = change.position
                                     }
-
-                                    // Consume the event
-                                    pointer.consume()
                                 }
-                            }
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectTransformGestures { centroid, pan, zoom, rotation ->
-                            // Handle zoom
-                            val oldScale = scale
-                            scale = (scale * zoom).coerceIn(0.1f, 5f)
+                            },
+                            onDragEnd = {
+                                // Clean reset of all state
+                                isMouseDown = false
+                                isPanning = false
+                                isDragging = false
+                                draggedBlockId = null
+                                dragStartPosition = null
 
-                            // Adjust pan offset to maintain zoom point
-                            val newScaleFactor = scale / oldScale
-                            val centroidOffset = centroid - panOffset
-                            panOffset = centroid - (centroidOffset * newScaleFactor)
-                        }
-                    }
-                    // Add separate pointer input for mouse moves without dragging
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val position = event.changes.first().position
-
-                                // Update hover position on any mouse movement
-                                hoverPosition = position
-                                hoverDpPosition = position.toDpOffset(density)
-
-                                // If we're dragging a connection, update its position
-                                if (blockState.dragState.isActive && isMouseDown) {
-                                    blockState.updateDragPosition(hoverDpPosition)
+                                // Keep selection state
+                                if (dragStartBlockId != null) {
+                                    selectedBlockId = dragStartBlockId
                                 }
+                                dragStartBlockId = null
+                            },
+                            onDragCancel = {
+                                // Full reset
+                                isMouseDown = false
+                                isPanning = false
+                                isDragging = false
+                                draggedBlockId = null
+                                dragStartPosition = null
+                                dragStartBlockId = null
                             }
-                        }
-                    }
-                    // Handle keyboard events for panning and zooming
-                    .onKeyEvent { keyEvent ->
-                        // Much faster panning with keyboard (100 units instead of 20)
-                        val panAmount = 100f
-
-                        when (keyEvent.key) {
-                            Key.DirectionLeft -> {
-                                // Create a brand new Offset to ensure state change detection
-                                panOffset = Offset(panOffset.x + panAmount, panOffset.y)
-                                true
-                            }
-
-                            Key.DirectionRight -> {
-                                // Create a brand new Offset to ensure state change detection
-                                panOffset = Offset(panOffset.x - panAmount, panOffset.y)
-                                true
-                            }
-
-                            Key.DirectionUp -> {
-                                // Create a brand new Offset to ensure state change detection
-                                panOffset = Offset(panOffset.x, panOffset.y + panAmount)
-                                true
-                            }
-
-                            Key.DirectionDown -> {
-                                // Create a brand new Offset to ensure state change detection
-                                panOffset = Offset(panOffset.x, panOffset.y - panAmount)
-                                true
-                            }
-
-                            Key.Minus -> {
-                                // Create a brand new Offset to ensure state change detection
-                                var newScale = (scale * 0.9f).coerceIn(0.1f, 5f)
-                                // Only update if there's a meaningful change
-                                if (newScale != scale) {
-                                    scale = newScale
-                                }
-                                true
-                            }
-
-                            Key.Plus, Key.Equals -> {
-                                // Create a brand new Offset to ensure state change detection
-                                var newScale = (scale * 1.1f).coerceIn(0.1f, 5f)
-                                // Only update if there's a meaningful change
-                                if (newScale != scale) {
-                                    scale = newScale
-                                }
-                                true
-                            }
-
-                            else -> false
-                        }
+                        )
                     }
             ) {
                 // This Box applies the transformation
                 Box(
                     modifier = Modifier
-                        .matchParentSize() // Fill the workspace area
+                        .matchParentSize()
                         .graphicsLayer(
                             translationX = panOffset.x,
                             translationY = panOffset.y,
@@ -443,6 +457,7 @@ fun editor(
                             onDragEnd = { newPosition ->
                                 blockState.updateBlockPosition(block.id, newPosition)
                             },
+                            onDragStart = { },
                             onRename = { newContent ->
                                 println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
                                 blockState.updateBlockContent(block.id, newContent)
@@ -457,9 +472,7 @@ fun editor(
                                 selectedBlockId = blockId
                                 println("Block selected through click: $blockId")
                             },
-                            // Pass hover state to block
-                            isHovered = hoveredBlockId == block.id,
-                            // Pass the active drag state to determine connection point visibility
+                            isHovered = false,
                             activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
                         )
                     }
