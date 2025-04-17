@@ -21,6 +21,7 @@ fun blockLibraryPanel(
     modifier: Modifier = Modifier,
     onBlockSelected: (Block) -> Unit,
     onGithubClick: () -> Unit,
+    onLocalDirectoryClick: () -> Unit,
     onVariablesClick: () -> Unit
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<BlockType>()) }
@@ -46,6 +47,15 @@ fun blockLibraryPanel(
                     .padding(bottom = 8.dp)
             ) {
                 Text("Load from GitHub")
+            }
+            
+            Button(
+                onClick = onLocalDirectoryClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Text("Load from Directory")
             }
 
             Button(

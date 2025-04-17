@@ -22,7 +22,8 @@ fun launcherScreen(
     projectState: ProjectState,
     onCreateNewProject: (String, String) -> Unit,
     onOpenProject: (Project) -> Unit,
-    onRemoveFromRecent: (Project) -> Unit
+    onRemoveFromRecent: (Project) -> Unit,
+    onLoadFromDirectory: () -> Unit
 ) {
     var showNewProjectDialog by remember { mutableStateOf(false) }
     var projectName by remember { mutableStateOf("") }
@@ -68,11 +69,19 @@ fun launcherScreen(
                             text = "Recent Projects",
                             style = MaterialTheme.typography.h6
                         )
-                        IconButton(onClick = { showNewProjectDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "New Project"
-                            )
+                        Row {
+                            IconButton(onClick = { showNewProjectDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New Project"
+                                )
+                            }
+                            TextButton(
+                                onClick = onLoadFromDirectory,
+                                modifier = Modifier.padding(end = 4.dp)
+                            ) {
+                                Text("Load from Directory", style = MaterialTheme.typography.caption)
+                            }
                         }
                     }
 

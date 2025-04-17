@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
@@ -17,9 +18,12 @@ import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
 import terraformbuilder.components.BlockState
 import terraformbuilder.components.editor
+import terraformbuilder.components.loadDirectoryDialog
 import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen
+import terraformbuilder.terraform.LocalDirectoryLoader
+import terraformbuilder.terraform.TerraformParser
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.VariableState
 
@@ -63,6 +67,7 @@ fun app() {
 
     var showNewProjectDialog by remember { mutableStateOf(false) }
     var showOpenProjectDialog by remember { mutableStateOf(false) }
+    var showLocalDirectoryDialog by remember { mutableStateOf(false) }
     var newProjectName by remember { mutableStateOf("") }
     var newProjectDescription by remember { mutableStateOf("") }
 
@@ -173,7 +178,8 @@ fun app() {
             projectState = projectState.value,
             onCreateNewProject = onCreateNewProject,
             onOpenProject = onOpenProject,
-            onRemoveFromRecent = onRemoveFromRecent
+            onRemoveFromRecent = onRemoveFromRecent,
+            onLoadFromDirectory = { showLocalDirectoryDialog = true }
         )
     } else {
         editor(
@@ -291,6 +297,95 @@ fun app() {
                     Text("Close")
                 }
             }
+        )
+    }
+    
+    // Local Directory Dialog
+    if (showLocalDirectoryDialog) {
+        loadDirectoryDialog(
+            onDismiss = {
+                showLocalDirectoryDialog = false
+                errorMessage = null
+            },
+            onSelectDirectory = { directory ->
+                coroutineScope.launch {
+                    isLoading = true
+                    errorMessage = null
+                    try {
+                        println("APP: Processing local directory: ${directory.absolutePath}")
+                        
+                        // Create a new project first
+                        val projectName = directory.name
+                        val projectDescription = "Imported from ${directory.absolutePath}"
+                        val project = ProjectManager.createProject(projectName, projectDescription)
+                        projectState.value = projectState.value.setCurrentProject(project)
+                        ProjectManager.saveProjectState(projectState.value)
+                        
+                        // Clear existing blocks and variables
+                        blockState.clearAll()
+                        variableState.clearAll()
+
+                        val directoryLoader = LocalDirectoryLoader()
+                        val files = directoryLoader.loadTerraformFiles(directory)
+
+                        if (files.isEmpty()) {
+                            errorMessage = "No Terraform files found in directory"
+                            return@launch
+                        }
+
+                        println("APP: Loaded ${files.size} files from local directory")
+
+                        val parser = TerraformParser()
+
+                        // Parse all files
+                        files.forEach { file ->
+                            val parseResult = parser.parse(file)
+
+                            // Add variables
+                            parseResult.variables.forEach { variable ->
+                                println("APP: Adding variable ${variable.name}")
+                                variableState.addVariable(variable)
+                            }
+
+                            // Convert and add resources
+                            val blocks = parser.convertToBlocks(parseResult.resources)
+                            blocks.forEachIndexed { index, block ->
+                                val row = index / 3
+                                val col = index % 3
+                                val position = Offset(
+                                    50f + col * 200f,
+                                    50f + row * 150f
+                                )
+                                println("APP: Adding block ${block.content} at position $position")
+                                blockState.addBlock(block.copy(_position = position))
+                            }
+                        }
+
+                        if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                            errorMessage = "No Terraform resources or variables found in files"
+                            return@launch
+                        }
+                        
+                        // Save the project with the imported resources
+                        ProjectManager.saveProject(
+                            project = project,
+                            blocks = blockState.blocks,
+                            variables = variableState.variables,
+                            connections = blockState.connections
+                        )
+
+                        showLocalDirectoryDialog = false
+                    } catch (e: Exception) {
+                        println("APP: Error loading Terraform: ${e.message}")
+                        e.printStackTrace()
+                        errorMessage = "Error: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            isLoading = isLoading,
+            errorMessage = errorMessage
         )
     }
 }

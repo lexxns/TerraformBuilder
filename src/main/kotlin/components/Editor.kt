@@ -26,10 +26,12 @@ import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser
+import terraformbuilder.terraform.LocalDirectoryLoader
 import terraformbuilder.terraform.TerraformParser
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.terraform.VariableState
+import java.io.File
 import java.util.*
 
 // Library block creation helper
@@ -175,6 +177,7 @@ fun editor(
     }
 
     var showGithubDialog by remember { mutableStateOf(false) }
+    var showLocalDirectoryDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -261,6 +264,79 @@ fun editor(
             errorMessage = errorMessage
         )
     }
+    
+    if (showLocalDirectoryDialog) {
+        loadDirectoryDialog(
+            onDismiss = {
+                showLocalDirectoryDialog = false
+                errorMessage = null
+            },
+            onSelectDirectory = { directory ->
+                coroutineScope.launch {
+                    isLoading = true
+                    errorMessage = null
+                    try {
+                        println("APP: Processing local directory: ${directory.absolutePath}")
+
+                        // Clear existing blocks and variables before loading new ones
+                        blockState.clearAll()
+                        variableState.clearAll()
+
+                        val directoryLoader = LocalDirectoryLoader()
+                        val files = directoryLoader.loadTerraformFiles(directory)
+
+                        if (files.isEmpty()) {
+                            errorMessage = "No Terraform files found in directory"
+                            return@launch
+                        }
+
+                        println("APP: Loaded ${files.size} files from local directory")
+
+                        val parser = TerraformParser()
+
+                        // Parse all files
+                        files.forEach { file ->
+                            val parseResult = parser.parse(file)
+
+                            // Add variables
+                            parseResult.variables.forEach { variable ->
+                                println("APP: Adding variable ${variable.name}")
+                                variableState.addVariable(variable)
+                            }
+
+                            // Convert and add resources
+                            val blocks = parser.convertToBlocks(parseResult.resources)
+                            blocks.forEachIndexed { index, block ->
+                                val row = index / 3
+                                val col = index % 3
+                                val position = Offset(
+                                    50f + col * 100f,
+                                    50f + row * 50f
+                                )
+                                println("APP: Adding block ${block.content} at position $position")
+                                blockState.addBlock(block.copy(_position = position))
+                            }
+                        }
+
+                        if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                            errorMessage = "No Terraform resources or variables found in files"
+                            return@launch
+                        }
+
+                        showLocalDirectoryDialog = false
+                    } catch (e: Exception) {
+                        println("APP: Error loading Terraform: ${e.message}")
+                        e.printStackTrace()
+                        errorMessage = "Error: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            isLoading = isLoading,
+            errorMessage = errorMessage
+        )
+    }
 
     if (showVariablesDialog) {
         variableDialog(
@@ -320,6 +396,7 @@ fun editor(
                     )
                 },
                 onGithubClick = { showGithubDialog = true },
+                onLocalDirectoryClick = { showLocalDirectoryDialog = true },
                 onVariablesClick = { showVariablesDialog = true }
             )
 
