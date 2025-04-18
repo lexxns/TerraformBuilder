@@ -52,6 +52,13 @@ private fun generateDefaultName(resourceType: ResourceType): String {
     return "$prefix-$randomId"
 }
 
+// Format resource name for Terraform compatibility
+// Should match the format used in TerraformCodeGenerator.formatResourceName
+private fun formatResourceName(content: String): String {
+    // Convert to valid Terraform resource name: lowercase, underscores, no special chars
+    return content.lowercase().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
+}
+
 @Composable
 @Preview
 fun editor(
@@ -185,6 +192,7 @@ fun editor(
     var showVariablesDialog by remember { mutableStateOf(false) }
     var selectedBlockId by remember { mutableStateOf<String?>(null) }
     var hoveredBlockId by remember { mutableStateOf<String?>(null) }
+    var hoveredVariableName by remember { mutableStateOf<String?>(null) }
 
     if (showGithubDialog) {
         GithubUrlDialog(
@@ -397,7 +405,8 @@ fun editor(
                 },
                 onGithubClick = { showGithubDialog = true },
                 onLocalDirectoryClick = { showLocalDirectoryDialog = true },
-                onVariablesClick = { showVariablesDialog = true }
+                onVariablesClick = { showVariablesDialog = true },
+                highlightVariableButton = hoveredVariableName != null
             )
 
             // Workspace Area
@@ -560,6 +569,7 @@ fun editor(
                                 println("Block selected through click: $blockId")
                             },
                             isHovered = false,
+                            isReferenced = blockState.isBlockReferenced(block.id),
                             activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
                         )
                     }
@@ -585,6 +595,27 @@ fun editor(
                                 block = block,
                                 onPropertyChange = { propertyName, propertyValue ->
                                     blockState.updateBlockProperty(id, propertyName, propertyValue)
+                                },
+                                onNavigateToVariable = { variableName -> 
+                                    // Show variables dialog focused on this variable
+                                    hoveredVariableName = variableName
+                                    showVariablesDialog = true
+                                },
+                                onNavigateToResource = { resourceType, resourceName ->
+                                    // Find and highlight the referenced resource
+                                    blockState.blocks.find { b -> 
+                                        b.resourceType.resourceName == resourceType && 
+                                        formatResourceName(b.content) == resourceName 
+                                    }?.let { foundBlock ->
+                                        // Highlight/select the found block
+                                        selectedBlockId = foundBlock.id
+                                        
+                                        // Pan to center the found block
+                                        panOffset = Offset(
+                                            -foundBlock.position.x + 400,
+                                            -foundBlock.position.y + 300
+                                        )
+                                    }
                                 },
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)

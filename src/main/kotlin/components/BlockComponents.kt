@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -30,6 +31,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -264,6 +266,27 @@ class BlockState {
         val block = _blocks.find { it.id == blockId } ?: return emptyMap()
         return block.properties.toMap()
     }
+    
+    // Check if a block is referenced by any other block's properties
+    fun isBlockReferenced(blockId: String): Boolean {
+        val block = _blocks.find { it.id == blockId } ?: return false
+        val resourceType = block.resourceType.resourceName
+        val resourceName = formatResourceName(block.content)
+        val referencePattern = "$resourceType.$resourceName"
+        
+        // Check all blocks' properties for references to this block
+        return _blocks.any { otherBlock ->
+            otherBlock.id != blockId && otherBlock.properties.values.any { 
+                propertyValue -> propertyValue.contains(referencePattern) 
+            }
+        }
+    }
+    
+    // Helper to format resource name for reference checking
+    private fun formatResourceName(content: String): String {
+        // Convert to valid Terraform resource name: lowercase, underscores, no special chars
+        return content.lowercase().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
+    }
 
     private fun addConnection(sourceBlock: Block, targetBlock: Block) {
         // Check if connection already exists
@@ -448,6 +471,7 @@ fun blockView(
     onUpdateBlockSize: (String, Offset) -> Unit,
     onBlockSelected: (String) -> Unit = {},
     isHovered: Boolean = false,
+    isReferenced: Boolean = false,
     activeDragState: ConnectionDragState? = null
 ) {
     var position by remember { mutableStateOf(block.position) }
@@ -505,6 +529,12 @@ fun blockView(
     val showOutputPoint = showConnectionPoints &&
             (activeDragState == null || !activeDragState.isActive ||
                     activeDragState.sourcePointType == ConnectionPointType.INPUT)
+                    
+    // Set up reference highlighting animation
+    val referenceAlpha by animateFloatAsState(
+        targetValue = if (isReferenced) 1f else 0f,
+        label = "referenceHighlight"
+    )
 
     // The outermost Box that positions the block and handles size updates
     Box(
@@ -522,6 +552,19 @@ fun blockView(
                 }
             }
     ) {
+        // Add a glow effect when referenced
+        if (isReferenced) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(4.dp)
+                    .background(
+                        color = Color(0xFFFFA500).copy(alpha = 0.2f * referenceAlpha),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .zIndex(0.5f)
+            )
+        }
         // Use a fixed stack order with zIndex to ensure proper layering
 
         // First, draw both connection points if needed (they should appear behind the block)
@@ -567,8 +610,8 @@ fun blockView(
                     shape = RoundedCornerShape(8.dp)
                 )
                 .border(
-                    width = 2.dp,
-                    color = Color.Black,
+                    width = if (isReferenced) 3.dp else 2.dp,
+                    color = if (isReferenced) Color(0xFFFFA500) else Color.Black, // Orange highlight when referenced
                     shape = RoundedCornerShape(8.dp)
                 )
                 .padding(8.dp)
@@ -668,7 +711,10 @@ fun blockView(
                 Text(
                     text = block.content,
                     color = Color.White,
-                    style = MaterialTheme.typography.body1
+                    style = MaterialTheme.typography.body1.copy(
+                        fontWeight = if (isReferenced) FontWeight.Bold 
+                                    else FontWeight.Normal
+                    )
                 )
             }
         }

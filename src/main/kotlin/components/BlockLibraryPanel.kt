@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import terraformbuilder.ResourceType
 import terraformbuilder.terraform.ResourceTypeCategorizer
@@ -22,7 +23,8 @@ fun blockLibraryPanel(
     onBlockSelected: (Block) -> Unit,
     onGithubClick: () -> Unit,
     onLocalDirectoryClick: () -> Unit,
-    onVariablesClick: () -> Unit
+    onVariablesClick: () -> Unit,
+    highlightVariableButton: Boolean = false
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<BlockType>()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -62,9 +64,27 @@ fun blockLibraryPanel(
                 onClick = onVariablesClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 16.dp),
+                colors = if (highlightVariableButton) {
+                    // Use a glowing highlight effect for the variables button
+                    ButtonDefaults.buttonColors(
+                        backgroundColor = MaterialTheme.colors.primary.copy(alpha = 0.8f),
+                        contentColor = MaterialTheme.colors.onPrimary
+                    )
+                } else {
+                    ButtonDefaults.buttonColors()
+                }
             ) {
-                Text("Manage Variables")
+                Text(
+                    text = "Manage Variables",
+                    style = if (highlightVariableButton) {
+                        MaterialTheme.typography.button.copy(
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        MaterialTheme.typography.button
+                    }
+                )
             }
 
             // Add search bar
