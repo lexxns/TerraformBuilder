@@ -9,11 +9,11 @@ object TerraformConstants {
     const val INTERP_END = "____INTERP_E____"
 
     // Regex pattern to find Terraform interpolation, accounting for nested braces
-    val INTERPOLATION_PATTERN = """\$\{([^{}]*(\{[^{}]*}[^{}]*)*)}""".toRegex()
+    private val INTERPOLATION_PATTERN = """\$\{([^{}]*(\{[^{}]*}[^{}]*)*)}""".toRegex()
 
     // Regex to match our custom interpolation markers
     // Need to escape the marker strings since they contain special characters
-    val MARKER_PATTERN = """____INTERP_S____(.*?)____INTERP_E____""".toRegex()
+    private val MARKER_PATTERN = """____INTERP_S____(.*?)____INTERP_E____""".toRegex()
 
     /**
      * Replace Terraform interpolation syntax ${...} with our custom markers

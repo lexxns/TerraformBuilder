@@ -166,8 +166,57 @@ class TerraformReferenceAnalyzer {
             segments.add(ExpressionSegment.Text(input.substring(currentIndex)))
         }
 
-        return segments
+        return processRawReferences(segments)
     }
+
+    private fun processRawReferences(segments: List<ExpressionSegment>): List<ExpressionSegment> {
+        val processed = mutableListOf<ExpressionSegment>()
+        segments.forEach { segment ->
+            if (segment is ExpressionSegment.Text) {
+                processed.addAll(parseRawReferences(segment.content))
+            } else {
+                processed.add(segment)
+            }
+        }
+        return processed
+    }
+
+    private fun parseRawReferences(text: String): List<ExpressionSegment> {
+        val regex = """(\b[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*\b)""".toRegex()
+        val matches = regex.findAll(text)
+        val newSegments = mutableListOf<ExpressionSegment>()
+        var currentIndex = 0
+
+        for (match in matches) {
+            val (start, end) = match.range.let { it.first to it.last + 1 }
+            if (start > currentIndex) {
+                newSegments.add(ExpressionSegment.Text(text.substring(currentIndex, start)))
+            }
+
+            val ref = match.value
+            val parts = ref.split('.')
+            if (parts.size >= 2) {
+                newSegments.add(
+                    ExpressionSegment.ResourceReference(
+                        resourceType = parts[0],
+                        resourceName = parts[1],
+                        attribute = parts.getOrNull(2),
+                        originalText = ref,
+                        isInterpolated = false // Raw reference
+                    )
+                )
+            } else {
+                newSegments.add(ExpressionSegment.Text(ref))
+            }
+            currentIndex = end
+        }
+
+        if (currentIndex < text.length) {
+            newSegments.add(ExpressionSegment.Text(text.substring(currentIndex)))
+        }
+        return newSegments
+    }
+
 
     /**
      * Find all variable references in a property value
@@ -190,7 +239,7 @@ class TerraformReferenceAnalyzer {
     /**
      * Extract all references from a property value containing our interpolation markers
      */
-    fun extractReferences(input: String): List<Reference> {
+    private fun extractReferences(input: String): List<Reference> {
         val references = mutableListOf<Reference>()
         val segments = parseExpression(input)
 
@@ -264,9 +313,7 @@ class TerraformReferenceAnalyzer {
 
                     is ExpressionSegment.ResourceReference -> {
                         // Resource references are highlighted in green
-                        if (segment.isInterpolated) {
-                            append("\${")
-                        }
+                        if (segment.isInterpolated) append("\${") else append("")
 
                         withStyle(SpanStyle(color = Color(0xFF4CAF50))) { // Green
                             append(segment.resourceType)
@@ -278,9 +325,7 @@ class TerraformReferenceAnalyzer {
                             }
                         }
 
-                        if (segment.isInterpolated) {
-                            append("}")
-                        }
+                        if (segment.isInterpolated) append("}") else append("")
                     }
 
                     is ExpressionSegment.Function -> {
