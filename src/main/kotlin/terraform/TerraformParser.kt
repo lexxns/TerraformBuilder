@@ -10,7 +10,7 @@ import java.io.StringReader
 data class TerraformResource(
     val type: String,
     val name: String,
-    val properties: Map<String, Any>
+    val properties: Map<String, Any?>
 )
 
 class TerraformParser {
@@ -21,19 +21,117 @@ class TerraformParser {
 
     private val categorizer = ResourceTypeCategorizer()
 
+    /**
+     * Preprocesses HCL content to handle string interpolation properly
+     * Replaces Terraform interpolation syntax ${...} with custom markers to prevent
+     * the parser from misinterpreting them
+     */
+    private fun preprocessHCL(content: String): String {
+        // Replace ${...} with custom markers
+        // Use regex to match all ${...} patterns, accounting for nested braces
+        val interpolationPattern = """\$\{([^{}]*(\{[^{}]*}[^{}]*)*)}""".toRegex()
+        return content.replace(interpolationPattern) { matchResult ->
+            val interpolationContent = matchResult.groupValues[1]
+            "____INTERP_S____${interpolationContent}____INTERP_E____"
+        }
+    }
+
+    /**
+     * Restores the original Terraform interpolation syntax from our custom markers
+     */
+    private fun restoreInterpolation(value: String): String {
+        return value
+            .replace("____INTERP_S____", "\${")
+            .replace("____INTERP_E____", "}")
+    }
+
+    /**
+     * Safely converts an HCL value to a string that preserves interpolation
+     */
+    private fun preserveInterpolationString(value: Any?): String {
+        if (value == null) return ""
+
+        // For direct strings, restore interpolation markers and return
+        if (value is String) {
+            return restoreInterpolation(value)
+        }
+
+        // For maps, we need special handling to preserve the structure
+        if (value is Map<*, *>) {
+            return when {
+                // For policy documents, convert to proper JSON
+                value.keys.any { key ->
+                    key.toString().contains("policy", ignoreCase = true) ||
+                            key.toString().contains("document", ignoreCase = true)
+                } -> {
+                    try {
+                        // Convert to JSON but preserve our interpolation markers
+                        val jsonStr = JSONObject(value).toString(2)
+                        restoreInterpolation(jsonStr)
+                    } catch (e: Exception) {
+                        // Fall back to simple string representation
+                        val mapStr = "{${
+                            value.entries.joinToString(", ") {
+                                "${it.key} = ${preserveInterpolationString(it.value)}"
+                            }
+                        }}"
+                        restoreInterpolation(mapStr)
+                    }
+                }
+
+                // For environment variables, preserve the structure
+                value.keys.any { key -> key.toString() == "variables" } -> {
+                    val envVarsStr = "{${
+                        value.entries.joinToString(", ") {
+                            "${it.key} = ${preserveInterpolationString(it.value)}"
+                        }
+                    }}"
+                    restoreInterpolation(envVarsStr)
+                }
+
+                // Default map handling
+                else -> {
+                    val mapStr = "{${
+                        value.entries.joinToString(", ") {
+                            "${it.key} = ${preserveInterpolationString(it.value)}"
+                        }
+                    }}"
+                    restoreInterpolation(mapStr)
+                }
+            }
+        }
+
+        // For lists, preserve each element
+        if (value is List<*>) {
+            val listStr = "[${value.joinToString(", ") { preserveInterpolationString(it) }}]"
+            return restoreInterpolation(listStr)
+        }
+
+        // Default case - use toString and restore any interpolation
+        return restoreInterpolation(value.toString())
+    }
+
     fun parse(content: String): ParseResult {
         try {
             val parser = HCLParser()
-            val result = parser.parse(StringReader(content))
 
-            // Debug print the raw structure first
-            debugPrintStructure(result)
+            // Preprocess to replace ${...} with our custom markers
+            val preprocessedContent = preprocessHCL(content)
+            println("PARSER: Preprocessed Terraform content")
+
+            // Parse the preprocessed content
+            val result = parser.parse(StringReader(preprocessedContent))
+            println("PARSER: Successfully parsed HCL content")
+
+            // Debug print the raw structure
+            // debugPrintStructure(result)
 
             return ParseResult(
                 resources = parseResources(result),
                 variables = parseVariables(result)
             )
         } catch (e: Exception) {
+            println("PARSER: Error parsing HCL content: ${e.message}")
             e.printStackTrace()
             return ParseResult(emptyList(), emptyList())
         }
@@ -77,12 +175,16 @@ class TerraformParser {
             is Map<*, *> -> {
                 value.forEach { (name, config) ->
                     if (config is Map<*, *>) {
-                        @Suppress("UNCHECKED_CAST")
+                        // Convert properties with proper interpolation preservation
+                        val properties = config.entries.associate { (propKey, propValue) ->
+                            propKey.toString() to propValue
+                        }
+
                         resources.add(
                             TerraformResource(
                                 type = "module",
                                 name = name.toString(),
-                                properties = config as Map<String, Any>
+                                properties = properties
                             )
                         )
                     }
@@ -94,12 +196,16 @@ class TerraformParser {
                     if (item is Map<*, *>) {
                         item.forEach { (name, config) ->
                             if (config is Map<*, *>) {
-                                @Suppress("UNCHECKED_CAST")
+                                // Convert properties with proper interpolation preservation
+                                val properties = config.entries.associate { (propKey, propValue) ->
+                                    propKey.toString() to propValue
+                                }
+
                                 resources.add(
                                     TerraformResource(
                                         type = "module",
                                         name = name.toString(),
-                                        properties = config as Map<String, Any>
+                                        properties = properties
                                     )
                                 )
                             }
@@ -114,12 +220,16 @@ class TerraformParser {
         if (instances is Map<*, *>) {
             instances.forEach { (name, props) ->
                 if (props is Map<*, *>) {
-                    @Suppress("UNCHECKED_CAST")
+                    // Keep properties as raw as possible to preserve interpolation
+                    val properties = props.entries.associate { (propKey, propValue) ->
+                        propKey.toString() to propValue
+                    }
+
                     resources.add(
                         TerraformResource(
                             type = type,
                             name = name.toString(),
-                            properties = props as Map<String, Any>
+                            properties = properties
                         )
                     )
                 }
@@ -160,33 +270,9 @@ class TerraformParser {
     fun convertToBlocks(resources: List<TerraformResource>): List<Block> {
         return resources.map { resource ->
             // Convert properties to string values for our Block class
+            // IMPORTANT: Preserve interpolation syntax in strings
             val stringProperties = resource.properties.mapValues { (_, value) ->
-                when (value) {
-                    is Map<*, *> -> {
-                        // For JSON-like structures, convert to proper JSON string
-                        if (value.keys.any { it.toString().contains("policy") || it.toString().contains("document") }) {
-                            try {
-                                // Convert the map to a JSONObject and get its string representation
-                                JSONObject(value).toString(2) // Use 2 spaces for indentation
-                            } catch (e: Exception) {
-                                // If JSON conversion fails, fall back to the original toString
-                                value.toString()
-                            }
-                        } else {
-                            "{${value.entries.joinToString(", ") { "${it.key} = ${it.value}" }}}"
-                        }
-                    }
-
-                    is List<*> -> "[${value.joinToString(", ")}]"
-                    else -> {
-                        // Ignore compiler, this CAN be null
-                        if (value == null) {
-                            ""
-                        } else {
-                            value.toString()
-                        }
-                    }
-                }
+                preserveInterpolationString(value)
             }
 
             Block(
@@ -206,32 +292,7 @@ class TerraformParser {
     private fun determineBlockType(resourceType: ResourceType): BlockType {
         return categorizer.determineBlockType(resourceType)
     }
-
-    private fun debugPrintStructure(map: Map<*, *>, indent: String = "") {
-        map.forEach { (key, value) ->
-            when (value) {
-                is Map<*, *> -> {
-                    println("$indent$key:")
-                    debugPrintStructure(value, "$indent  ")
-                }
-
-                is List<*> -> {
-                    println("$indent$key: [")
-                    value.forEach { item ->
-                        if (item is Map<*, *>) {
-                            debugPrintStructure(item, "$indent  ")
-                        } else {
-                            println("$indent  $item")
-                        }
-                    }
-                    println("$indent]")
-                }
-
-                else -> println("$indent$key: $value")
-            }
-        }
-    }
-
+    
     private fun createVariableFromConfig(name: String, config: Map<*, *>): TerraformVariable {
         println("PARSER: Creating variable '$name' with config: $config")
 
@@ -263,4 +324,4 @@ class TerraformParser {
             println("PARSER: Created variable: $it")
         }
     }
-} 
+}
