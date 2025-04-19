@@ -12,7 +12,8 @@ object TerraformConstants {
     val INTERPOLATION_PATTERN = """\$\{([^{}]*(\{[^{}]*}[^{}]*)*)}""".toRegex()
 
     // Regex to match our custom interpolation markers
-    val MARKER_PATTERN = """${INTERP_START}([^${INTERP_END}]*)${INTERP_END}""".toRegex()
+    // Need to escape the marker strings since they contain special characters
+    val MARKER_PATTERN = """____INTERP_S____(.*?)____INTERP_E____""".toRegex()
 
     /**
      * Replace Terraform interpolation syntax ${...} with our custom markers

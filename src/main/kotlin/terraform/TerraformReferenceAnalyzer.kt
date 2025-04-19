@@ -63,14 +63,13 @@ class TerraformReferenceAnalyzer {
      * Parse a property value containing our interpolation markers into segments
      * that can be used for UI visualization
      */
-// In TerraformReferenceAnalyzer.kt
     fun parseExpression(input: String): List<ExpressionSegment> {
         val segments = mutableListOf<ExpressionSegment>()
         var currentIndex = 0
 
         // Find all occurrences of our custom markers
-        val pattern =
-            "${TerraformConstants.INTERP_START}([^${TerraformConstants.INTERP_END}]*)${TerraformConstants.INTERP_END}".toRegex()
+        // Use a literal pattern that specifically matches our markers
+        val pattern = """____INTERP_S____(.*?)____INTERP_E____""".toRegex()
         val matches = pattern.findAll(input)
 
         for (match in matches) {
@@ -171,55 +170,67 @@ class TerraformReferenceAnalyzer {
     }
 
     /**
-     * Parse the content inside an interpolation marker
+     * Find all variable references in a property value
      */
-    private fun parseInterpolationContent(content: String, originalText: String): ExpressionSegment {
-        // Check for variable references (var.xyz)
-        if (content.startsWith("var.")) {
-            val variableName = content.substring(4) // Remove "var."
-            return ExpressionSegment.VariableReference(
-                variableName = variableName,
-                originalText = originalText
-            )
-        }
+    fun findVariableReferences(input: String): List<String> {
+        return extractReferences(input)
+            .filterIsInstance<Reference.VariableReference>()
+            .map { it.variableName }
+    }
 
-        // Check for resource references (aws_xyz.name.attribute)
-        val resourceMatch = """^([a-z0-9_]+)\.([a-z0-9_]+)(?:\.([a-z0-9_]+))?$""".toRegex().find(content)
-        if (resourceMatch != null) {
-            val groupValues = resourceMatch.groupValues
-            val resourceType = groupValues[1]
-            val resourceName = groupValues[2]
-            val attribute = if (groupValues.size > 3 && groupValues[3].isNotEmpty()) groupValues[3] else null
+    /**
+     * Find all resource references in a property value
+     */
+    fun findResourceReferences(input: String): List<Pair<String, String>> {
+        return extractReferences(input)
+            .filterIsInstance<Reference.ResourceReference>()
+            .map { Pair(it.resourceType, it.resourceName) }
+    }
 
-            // Check if this is an AWS resource type
-            if (resourceType.startsWith("aws_")) {
-                return ExpressionSegment.ResourceReference(
-                    resourceType = resourceType,
-                    resourceName = resourceName,
-                    attribute = attribute,
-                    originalText = originalText
-                )
+    /**
+     * Extract all references from a property value containing our interpolation markers
+     */
+    fun extractReferences(input: String): List<Reference> {
+        val references = mutableListOf<Reference>()
+        val segments = parseExpression(input)
+
+        segments.forEach { segment ->
+            when (segment) {
+                is ExpressionSegment.VariableReference -> {
+                    references.add(Reference.VariableReference(segment.variableName))
+                }
+
+                is ExpressionSegment.ResourceReference -> {
+                    references.add(
+                        Reference.ResourceReference(
+                            resourceType = segment.resourceType,
+                            resourceName = segment.resourceName,
+                            attribute = segment.attribute
+                        )
+                    )
+                }
+
+                is ExpressionSegment.Function -> {
+                    references.add(
+                        Reference.FunctionCall(
+                            functionName = segment.functionName,
+                            content = segment.content
+                        )
+                    )
+
+                    // Recursively extract references from function arguments
+                    references.addAll(extractReferences(segment.content))
+                }
+
+                is ExpressionSegment.Expression -> {
+                    references.add(Reference.Expression(segment.content))
+                }
+
+                else -> {} // Ignore plain text
             }
         }
 
-        // Check for function calls like max(a, b) or format("string", var)
-        val functionMatch = """^([a-z0-9_]+)\((.*)\)$""".toRegex().find(content)
-        if (functionMatch != null) {
-            val functionName = functionMatch.groupValues[1]
-            val functionArgs = functionMatch.groupValues[2]
-
-            return ExpressionSegment.Function(
-                functionName = functionName,
-                content = functionArgs,
-                originalText = originalText
-            )
-        }
-
-        // Default to generic expression
-        return ExpressionSegment.Expression(
-            content = content,
-            originalText = originalText
-        )
+        return references
     }
 
     /**
@@ -312,69 +323,5 @@ class TerraformReferenceAnalyzer {
                 }
             }
         }
-    }
-
-    /**
-     * Extract all references from a property value containing our interpolation markers
-     */
-    fun extractReferences(input: String): List<Reference> {
-        val references = mutableListOf<Reference>()
-        val segments = parseExpression(input)
-
-        segments.forEach { segment ->
-            when (segment) {
-                is ExpressionSegment.VariableReference -> {
-                    references.add(Reference.VariableReference(segment.variableName))
-                }
-
-                is ExpressionSegment.ResourceReference -> {
-                    references.add(
-                        Reference.ResourceReference(
-                            resourceType = segment.resourceType,
-                            resourceName = segment.resourceName,
-                            attribute = segment.attribute
-                        )
-                    )
-                }
-
-                is ExpressionSegment.Function -> {
-                    references.add(
-                        Reference.FunctionCall(
-                            functionName = segment.functionName,
-                            content = segment.content
-                        )
-                    )
-
-                    // Recursively extract references from function arguments
-                    references.addAll(extractReferences(segment.content))
-                }
-
-                is ExpressionSegment.Expression -> {
-                    references.add(Reference.Expression(segment.content))
-                }
-
-                else -> {} // Ignore plain text
-            }
-        }
-
-        return references
-    }
-
-    /**
-     * Find all variable references in a property value
-     */
-    fun findVariableReferences(input: String): List<String> {
-        return extractReferences(input)
-            .filterIsInstance<Reference.VariableReference>()
-            .map { it.variableName }
-    }
-
-    /**
-     * Find all resource references in a property value
-     */
-    fun findResourceReferences(input: String): List<Pair<String, String>> {
-        return extractReferences(input)
-            .filterIsInstance<Reference.ResourceReference>()
-            .map { Pair(it.resourceType, it.resourceName) }
     }
 }
