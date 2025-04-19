@@ -2,8 +2,8 @@ package terraformbuilder.terraformbuilder
 
 import terraformbuilder.ResourceType
 import terraformbuilder.components.Block
-import terraformbuilder.components.BlockType
 import terraformbuilder.components.Connection
+import terraformbuilder.terraform.TerraformConstants
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.terraform.VariableType
 import java.io.File
@@ -48,13 +48,21 @@ class TerraformCodeGenerator {
         // Generate output declarations for significant resources
         val outputDeclarations = generateOutputs(blocksCopy)
 
-        // Write to files
-        File(outputDir, "provider.tf").writeText(providerConfig)
-        File(outputDir, "main.tf").writeText(resourceDeclarations.joinToString("\n\n"))
-        File(outputDir, "variables.tf").writeText(
-            (defaultVariables + variableDeclarations).joinToString("\n\n")
+        // Write to files - RESTORE INTERPOLATION HERE when writing to files
+        File(outputDir, "provider.tf").writeText(
+            TerraformConstants.restoreInterpolation(providerConfig)
         )
-        File(outputDir, "outputs.tf").writeText(outputDeclarations.joinToString("\n\n"))
+        File(outputDir, "main.tf").writeText(
+            TerraformConstants.restoreInterpolation(resourceDeclarations.joinToString("\n\n"))
+        )
+        File(outputDir, "variables.tf").writeText(
+            TerraformConstants.restoreInterpolation(
+                (defaultVariables + variableDeclarations).joinToString("\n\n")
+            )
+        )
+        File(outputDir, "outputs.tf").writeText(
+            TerraformConstants.restoreInterpolation(outputDeclarations.joinToString("\n\n"))
+        )
 
         println("Terraform code generated successfully in ${outputDir.absolutePath}")
     }
@@ -114,10 +122,8 @@ class TerraformCodeGenerator {
     }
 
     /**
-     * Formats a property value based on its type and context.
-     */
-    /**
      * Formats a property value based on its type, context, and potential variable references.
+     * Keep the interpolation markers inside the result - they will be restored when writing the file.
      */
     private fun formatPropertyValue(
         key: String, value: String, resourceType: ResourceType, variables: List<TerraformVariable>
@@ -127,14 +133,19 @@ class TerraformCodeGenerator {
             return "\"\""
         }
 
-        // Check if this is a variable reference
-        val matchingVar = variables.find { it.name == value }
-        if (matchingVar != null) {
-            return "var.${matchingVar.name}"
+        // Check if this value has our interpolation markers
+        if (TerraformConstants.containsInterpolation(value)) {
+            // This is a Terraform interpolation string (with our markers), preserve it exactly
+            // Check if it's already quoted
+            return if (value.startsWith("\"") && value.endsWith("\"")) {
+                value
+            } else {
+                "\"$value\""
+            }
         }
 
         // Handle resource references (created by processConnectionsIntoDependencies)
-        if (value.contains(".")) {
+        if (value.contains(".") && !value.startsWith("\"")) {
             val parts = value.split(".")
             if (parts.size >= 3 && parts[0].startsWith("aws_")) {
                 return value  // This is already a properly formatted reference
@@ -159,11 +170,6 @@ class TerraformCodeGenerator {
         // Special handling for depends_on
         if (key == "depends_on") {
             return value  // Already formatted properly by processConnectionsIntoDependencies
-        }
-
-        // Handle resource references embedded in strings
-        if (value.contains("\${") && value.contains("}")) {
-            return formatInterpolatedString(value)
         }
 
         // Standard type detection with better number handling
@@ -207,6 +213,9 @@ class TerraformCodeGenerator {
         // Process each item
         val formattedItems = items.map { item ->
             when {
+                // Check for interpolation markers
+                TerraformConstants.containsInterpolation(item) -> item
+
                 // Variable reference
                 variables.any { v -> v.name == item } -> "var.${item}"
 
@@ -221,19 +230,6 @@ class TerraformCodeGenerator {
         }
 
         return "[${formattedItems.joinToString(", ")}]"
-    }
-
-    /**
-     * Formats a string that contains Terraform interpolation.
-     */
-    private fun formatInterpolatedString(value: String): String {
-        // If it's already using the newer Terraform interpolation syntax
-        if (value.contains("\${") && !value.contains("\${")) {
-            return "\"$value\""
-        }
-
-        // Convert from older to newer syntax if needed
-        return "\"${value.replace("\${", "\${")}\""
     }
 
     /**
@@ -434,6 +430,12 @@ class TerraformCodeGenerator {
      * Formats a variable's default value based on its type.
      */
     private fun formatVariableDefault(value: String, type: VariableType): String {
+        // Check if the value contains interpolation markers
+        if (TerraformConstants.containsInterpolation(value)) {
+            // Preserve the markers in the default value
+            return value
+        }
+
         return when (type) {
             VariableType.STRING -> "\"$value\""
             VariableType.NUMBER, VariableType.BOOL -> value
@@ -459,7 +461,7 @@ class TerraformCodeGenerator {
             val resourceType = block.resourceType.resourceName
 
             when (block.type) {
-                BlockType.LOAD_BALANCER -> {
+                terraformbuilder.components.BlockType.LOAD_BALANCER -> {
                     outputs.add(
                         """
                     output "${resourceName}_dns_name" {
@@ -470,7 +472,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                BlockType.EC2 -> {
+                terraformbuilder.components.BlockType.EC2 -> {
                     outputs.add(
                         """
                     output "${resourceName}_public_ip" {
@@ -481,7 +483,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                BlockType.RDS -> {
+                terraformbuilder.components.BlockType.RDS -> {
                     outputs.add(
                         """
                     output "${resourceName}_endpoint" {
@@ -492,7 +494,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                BlockType.LAMBDA -> {
+                terraformbuilder.components.BlockType.LAMBDA -> {
                     outputs.add(
                         """
                     output "${resourceName}_function_name" {
@@ -503,7 +505,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                BlockType.API_GATEWAY -> {
+                terraformbuilder.components.BlockType.API_GATEWAY -> {
                     outputs.add(
                         """
                     output "${resourceName}_invoke_url" {

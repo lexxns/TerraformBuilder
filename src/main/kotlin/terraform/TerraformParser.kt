@@ -27,34 +27,20 @@ class TerraformParser {
      * the parser from misinterpreting them
      */
     private fun preprocessHCL(content: String): String {
-        // Replace ${...} with custom markers
-        // Use regex to match all ${...} patterns, accounting for nested braces
-        val interpolationPattern = """\$\{([^{}]*(\{[^{}]*}[^{}]*)*)}""".toRegex()
-        return content.replace(interpolationPattern) { matchResult ->
-            val interpolationContent = matchResult.groupValues[1]
-            "____INTERP_S____${interpolationContent}____INTERP_E____"
-        }
+        // Use the constant method to preprocess the content
+        return TerraformConstants.preprocessInterpolation(content)
     }
 
     /**
-     * Restores the original Terraform interpolation syntax from our custom markers
-     */
-    private fun restoreInterpolation(value: String): String {
-        return value
-            .replace("____INTERP_S____", "\${")
-            .replace("____INTERP_E____", "}")
-    }
-
-    /**
-     * Safely converts an HCL value to a string that preserves interpolation
+     * Safely converts an HCL value to a string that preserves interpolation markers
+     * We keep the markers in the internal representation and only restore them
+     * when generating the final output
      */
     private fun preserveInterpolationString(value: Any?): String {
         if (value == null) return ""
 
-        // For direct strings, restore interpolation markers and return
-        if (value is String) {
-            return restoreInterpolation(value)
-        }
+        // For direct strings, just return the value with markers intact
+        if (value is String) return value
 
         // For maps, we need special handling to preserve the structure
         if (value is Map<*, *>) {
@@ -65,50 +51,45 @@ class TerraformParser {
                             key.toString().contains("document", ignoreCase = true)
                 } -> {
                     try {
-                        // Convert to JSON but preserve our interpolation markers
-                        val jsonStr = JSONObject(value).toString(2)
-                        restoreInterpolation(jsonStr)
+                        // Convert to JSON but keep our interpolation markers
+                        JSONObject(value).toString(2)
                     } catch (e: Exception) {
                         // Fall back to simple string representation
-                        val mapStr = "{${
+                        "{${
                             value.entries.joinToString(", ") {
                                 "${it.key} = ${preserveInterpolationString(it.value)}"
                             }
                         }}"
-                        restoreInterpolation(mapStr)
                     }
                 }
 
                 // For environment variables, preserve the structure
                 value.keys.any { key -> key.toString() == "variables" } -> {
-                    val envVarsStr = "{${
+                    "{${
                         value.entries.joinToString(", ") {
                             "${it.key} = ${preserveInterpolationString(it.value)}"
                         }
                     }}"
-                    restoreInterpolation(envVarsStr)
                 }
 
                 // Default map handling
                 else -> {
-                    val mapStr = "{${
+                    "{${
                         value.entries.joinToString(", ") {
                             "${it.key} = ${preserveInterpolationString(it.value)}"
                         }
                     }}"
-                    restoreInterpolation(mapStr)
                 }
             }
         }
 
         // For lists, preserve each element
         if (value is List<*>) {
-            val listStr = "[${value.joinToString(", ") { preserveInterpolationString(it) }}]"
-            return restoreInterpolation(listStr)
+            return "[${value.joinToString(", ") { preserveInterpolationString(it) }}]"
         }
 
-        // Default case - use toString and restore any interpolation
-        return restoreInterpolation(value.toString())
+        // Default case - use toString
+        return value.toString()
     }
 
     fun parse(content: String): ParseResult {
@@ -292,7 +273,32 @@ class TerraformParser {
     private fun determineBlockType(resourceType: ResourceType): BlockType {
         return categorizer.determineBlockType(resourceType)
     }
-    
+
+    private fun debugPrintStructure(map: Map<*, *>, indent: String = "") {
+        map.forEach { (key, value) ->
+            when (value) {
+                is Map<*, *> -> {
+                    println("$indent$key:")
+                    debugPrintStructure(value, "$indent  ")
+                }
+
+                is List<*> -> {
+                    println("$indent$key: [")
+                    value.forEach { item ->
+                        if (item is Map<*, *>) {
+                            debugPrintStructure(item, "$indent  ")
+                        } else {
+                            println("$indent  $item")
+                        }
+                    }
+                    println("$indent]")
+                }
+
+                else -> println("$indent$key: $value")
+            }
+        }
+    }
+
     private fun createVariableFromConfig(name: String, config: Map<*, *>): TerraformVariable {
         println("PARSER: Creating variable '$name' with config: $config")
 

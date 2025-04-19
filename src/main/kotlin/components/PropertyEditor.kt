@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
@@ -24,10 +26,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
-import terraformbuilder.terraform.HCLExpressionParser
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty
+import terraformbuilder.terraform.TerraformReferenceAnalyzer
 import java.util.*
 
 @Composable
@@ -435,173 +437,150 @@ fun propertyEditor(
         // Property editor based on type
         when (property.type) {
             PropertyType.STRING -> {
-    // Use a key combining block ID and property name to reset state
-    key(blockKey, property.name) {
-        val rawValue = block.getProperty(property.name) ?: property.default ?: ""
-        var editMode by remember { mutableStateOf(false) }
-        
-        // For text editing mode
-        var editValue by remember { mutableStateOf(rawValue) }
-        
-        // Update when property changes externally
-        LaunchedEffect(block.getProperty(property.name)) {
-            editValue = block.getProperty(property.name) ?: property.default ?: ""
-        }
+                key(blockKey, property.name) {
+                    val rawValue = block.getProperty(property.name) ?: property.default ?: ""
+                    var editMode by remember { mutableStateOf(false) }
 
-        // Use the HCL parser for better expression handling
-        val expressionParser = remember { HCLExpressionParser() }
-        
-        // Parse the expression into segments
-        val segments = remember(rawValue) {
-            expressionParser.parseExpression(rawValue)
-        }
+                    // For text editing mode
+                    var editValue by remember { mutableStateOf(rawValue) }
 
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Toggle button for edit mode
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = { editMode = !editMode }) {
-                    Text(if (editMode) "Block View" else "Text Edit")
-                }
-            }
-            
-            if (editMode) {
-                // Text edit mode - simple text field with direct text editing
-                OutlinedTextField(
-                    value = editValue,
-                    onValueChange = { 
-                        editValue = it
-                        // In text edit mode, we directly use the raw text input
-                        onPropertyChange(property.name, it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            } else {
-                // Block mode - Scratch-like interface with reference blocks
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            MaterialTheme.colors.onSurface.copy(alpha = 0.12f),
-                            MaterialTheme.shapes.small
-                        )
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    // Render each segment
-                    segments.forEach { segment ->
-                        when (segment) {
-                            is HCLExpressionParser.ExpressionSegment.Text -> {
-                                // Render as regular text
-                                Text(
-                                    text = segment.content,
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
+                    // Update when property changes externally
+                    LaunchedEffect(block.getProperty(property.name)) {
+                        editValue = block.getProperty(property.name) ?: property.default ?: ""
+                    }
+
+                    // Use the reference analyzer to parse our custom markers
+                    val referenceAnalyzer = remember { TerraformReferenceAnalyzer() }
+
+                    // Parse the segments
+                    val segments = remember(editValue) {
+                        referenceAnalyzer.parseExpression(editValue)
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Toggle button for edit mode
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { editMode = !editMode }) {
+                                Text(if (editMode) "Block View" else "Text Edit")
                             }
-                            
-                            is HCLExpressionParser.ExpressionSegment.VariableReference -> {
-                                // Create a row for the variable reference with optional interpolation syntax
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                ) {
-                                    // Show interpolation start if needed
-                                    if (segment.isInterpolated) {
-                                        Text(
-                                            text = "\${",
-                                            modifier = Modifier.padding(end = 2.dp)
-                                        )
-                                    }
-                                    
-                                    // The variable reference as a button - use originalText to preserve exact format
-                                    Button(
-                                        onClick = {
-                                            // Navigate to the variable
-                                            if (onNavigateToVariable != null) {
-                                                onNavigateToVariable(segment.variableName)
+                        }
+
+                        if (editMode) {
+                            // Text edit mode - simple text field with direct text editing
+                            OutlinedTextField(
+                                value = editValue,
+                                onValueChange = {
+                                    editValue = it
+                                    // In text edit mode, we directly use the raw text input
+                                    onPropertyChange(property.name, it)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        } else {
+                            // Block mode - Display text and reference blocks
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colors.onSurface.copy(alpha = 0.12f),
+                                        MaterialTheme.shapes.small
+                                    )
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Render each segment
+                                segments.forEach { segment ->
+                                    when (segment) {
+                                        is TerraformReferenceAnalyzer.ExpressionSegment.Text -> {
+                                            // Render as regular text
+                                            Text(
+                                                text = segment.content,
+                                                modifier = Modifier.padding(end = 4.dp)
+                                            )
+                                        }
+
+                                        is TerraformReferenceAnalyzer.ExpressionSegment.VariableReference -> {
+                                            // Render variable reference as a button
+                                            val text = "var.${segment.variableName}"
+
+                                            Button(
+                                                onClick = {
+                                                    if (onNavigateToVariable != null) {
+                                                        onNavigateToVariable(segment.variableName)
+                                                    }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    backgroundColor = MaterialTheme.colors.primary
+                                                ),
+                                                contentPadding = PaddingValues(
+                                                    horizontal = 8.dp,
+                                                    vertical = 2.dp
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = text,
+                                                    color = MaterialTheme.colors.onPrimary,
+                                                    fontSize = 12.sp
+                                                )
                                             }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = MaterialTheme.colors.primary
-                                        ),
-                                        contentPadding = PaddingValues(
-                                            horizontal = 8.dp,
-                                            vertical = 2.dp
-                                        ),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        // If interpolated, don't include the ${} since we're already showing that
-                                        // If not interpolated, use the original text
-                                        Text(
-                                            text = if (segment.isInterpolated) "var.${segment.variableName}" else segment.originalText,
-                                            color = MaterialTheme.colors.onPrimary,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    
-                                    // Show interpolation end if needed
-                                    if (segment.isInterpolated) {
-                                        Text(
-                                            text = "}",
-                                            modifier = Modifier.padding(start = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            is HCLExpressionParser.ExpressionSegment.ResourceReference -> {
-                                // Create a row for the resource reference with optional interpolation syntax
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                ) {
-                                    // Show interpolation start if needed
-                                    if (segment.isInterpolated) {
-                                        Text(
-                                            text = "\${",
-                                            modifier = Modifier.padding(end = 2.dp)
-                                        )
-                                    }
-                                    
-                                    // The resource reference as a button - use originalText to preserve exact format
-                                    Button(
-                                        onClick = {
-                                            // Navigate to the resource
-                                            if (onNavigateToResource != null) {
-                                                onNavigateToResource(segment.resourceType, segment.resourceName)
+                                        }
+
+                                        is TerraformReferenceAnalyzer.ExpressionSegment.ResourceReference -> {
+                                            // Render resource reference as a button
+                                            val text = if (segment.attribute != null) {
+                                                "${segment.resourceType}.${segment.resourceName}.${segment.attribute}"
+                                            } else {
+                                                "${segment.resourceType}.${segment.resourceName}"
                                             }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = MaterialTheme.colors.secondary
-                                        ),
-                                        contentPadding = PaddingValues(
-                                            horizontal = 8.dp,
-                                            vertical = 2.dp
-                                        ),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        // If interpolated, don't include the ${} since we're already showing that
-                                        // If not interpolated, use the original text
-                                        Text(
-                                            text = if (segment.isInterpolated) 
-                                                "${segment.resourceType}.${segment.resourceName}${segment.attribute?.let { ".$it" } ?: ""}" 
-                                                else segment.originalText,
-                                            color = MaterialTheme.colors.onPrimary,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    
-                                    // Show interpolation end if needed
-                                    if (segment.isInterpolated) {
-                                        Text(
-                                            text = "}",
-                                            modifier = Modifier.padding(start = 2.dp)
-                                        )
+
+                                            Button(
+                                                onClick = {
+                                                    if (onNavigateToResource != null) {
+                                                        onNavigateToResource(segment.resourceType, segment.resourceName)
+                                                    }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    backgroundColor = MaterialTheme.colors.secondary
+                                                ),
+                                                contentPadding = PaddingValues(
+                                                    horizontal = 8.dp,
+                                                    vertical = 2.dp
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = text,
+                                                    color = MaterialTheme.colors.onPrimary,
+                                                    fontSize = 12.sp
+                                                )
+                                            }
+                                        }
+
+                                        is TerraformReferenceAnalyzer.ExpressionSegment.Function -> {
+                                            // Render function call with a distinctive style
+                                            Text(
+                                                text = "${segment.functionName}(${segment.content})",
+                                                color = Color(0xFF9C27B0), // Purple for functions
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            )
+                                        }
+
+                                        is TerraformReferenceAnalyzer.ExpressionSegment.Expression -> {
+                                            // Render generic expression
+                                            Text(
+                                                text = segment.content,
+                                                color = Color(0xFFFF9800), // Orange for expressions
+                                                fontStyle = FontStyle.Italic,
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -609,9 +588,6 @@ fun propertyEditor(
                     }
                 }
             }
-        }
-    }
-}
 
             PropertyType.NUMBER -> {
                 // Use a key combining block ID and property name to reset state
