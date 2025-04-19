@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import terraformbuilder.terraform.HCLExpressionParser
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty
@@ -434,213 +435,172 @@ fun propertyEditor(
         // Property editor based on type
         when (property.type) {
             PropertyType.STRING -> {
-                // Use a key combining block ID and property name to reset state
-                key(blockKey, property.name) {
-                    val rawValue = block.getProperty(property.name) ?: property.default ?: ""
-                    var editMode by remember { mutableStateOf(false) }
+    // Use a key combining block ID and property name to reset state
+    key(blockKey, property.name) {
+        val rawValue = block.getProperty(property.name) ?: property.default ?: ""
+        var editMode by remember { mutableStateOf(false) }
+        
+        // For text editing mode
+        var editValue by remember { mutableStateOf(rawValue) }
+        
+        // Update when property changes externally
+        LaunchedEffect(block.getProperty(property.name)) {
+            editValue = block.getProperty(property.name) ?: property.default ?: ""
+        }
 
-                    // For text editing mode
-                    var editValue by remember { mutableStateOf(rawValue) }
+        // Use the HCL parser for better expression handling
+        val expressionParser = remember { HCLExpressionParser() }
+        
+        // Parse the expression into segments
+        val segments = remember(rawValue) {
+            expressionParser.parseExpression(rawValue)
+        }
 
-                    // Update when property changes externally
-                    LaunchedEffect(block.getProperty(property.name)) {
-                        editValue = block.getProperty(property.name) ?: property.default ?: ""
-                    }
-
-                    // Improved regex patterns for terraform expressions
-                    // Separate pattern for interpolation vs standalone references
-                    val interpolationPattern = remember { Regex("\\$\\{([^}]+)}") }
-                    val varPattern = remember { Regex("var\\.[a-zA-Z0-9_]+") }
-                    val resourcePattern = remember { Regex("[a-zA-Z0-9_]+\\.[a-zA-Z0-9_]+\\.[a-zA-Z0-9_]+") }
-
-                    // Parse string into segments, properly handling interpolation
-                    val segments = remember(rawValue) {
-                        val result =
-                            mutableListOf<Triple<String, Boolean, String>>() // (text, isReference, originalText)
-                        var lastEnd = 0
-
-                        // First, find all interpolations ${...}
-                        interpolationPattern.findAll(rawValue).forEach { match ->
-                            // Add text before the interpolation
-                            if (match.range.first > lastEnd) {
-                                result.add(Triple(rawValue.substring(lastEnd, match.range.first), false, ""))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Toggle button for edit mode
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { editMode = !editMode }) {
+                    Text(if (editMode) "Block View" else "Text Edit")
+                }
+            }
+            
+            if (editMode) {
+                // Text edit mode - simple text field with direct text editing
+                OutlinedTextField(
+                    value = editValue,
+                    onValueChange = { 
+                        editValue = it
+                        // In text edit mode, we directly use the raw text input
+                        onPropertyChange(property.name, it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            } else {
+                // Block mode - Scratch-like interface with reference blocks
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            1.dp,
+                            MaterialTheme.colors.onSurface.copy(alpha = 0.12f),
+                            MaterialTheme.shapes.small
+                        )
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    // Render each segment
+                    segments.forEach { segment ->
+                        when (segment) {
+                            is HCLExpressionParser.ExpressionSegment.Text -> {
+                                // Render as regular text
+                                Text(
+                                    text = segment.content,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
                             }
-
-                            // Extract the inner content
-                            val innerContent = match.groupValues[1]
-                            val originalText = match.value // The entire ${...} text
-
-                            // Check if inner content is a variable reference
-                            val varMatch = varPattern.find(innerContent)
-                            if (varMatch != null) {
-                                // It's a variable reference inside interpolation
-                                result.add(Triple(varMatch.value, true, originalText))
-                            } else {
-                                // Check if it's a resource reference
-                                val resourceMatch = resourcePattern.find(innerContent)
-                                if (resourceMatch != null) {
-                                    // It's a resource reference inside interpolation
-                                    result.add(Triple(resourceMatch.value, true, originalText))
-                                } else {
-                                    // Not a recognized reference, treat as plain text
-                                    result.add(Triple(originalText, false, ""))
-                                }
-                            }
-
-                            lastEnd = match.range.last + 1
-                        }
-
-                        // Handle remaining text after last interpolation
-                        if (lastEnd < rawValue.length) {
-                            // Check for standalone references in remaining text
-                            val remaining = rawValue.substring(lastEnd)
-                            val standaloneVarMatch = varPattern.find(remaining)
-
-                            if (standaloneVarMatch != null) {
-                                // There's a standalone var reference
-                                if (standaloneVarMatch.range.first > 0) {
-                                    // Add text before the reference
-                                    result.add(
-                                        Triple(
-                                            remaining.substring(0, standaloneVarMatch.range.first),
-                                            false,
-                                            ""
-                                        )
-                                    )
-                                }
-
-                                // Add the reference
-                                result.add(Triple(standaloneVarMatch.value, true, standaloneVarMatch.value))
-
-                                // Add text after the reference
-                                if (standaloneVarMatch.range.last + 1 < remaining.length) {
-                                    result.add(
-                                        Triple(
-                                            remaining.substring(standaloneVarMatch.range.last + 1),
-                                            false,
-                                            ""
-                                        )
-                                    )
-                                }
-                            } else {
-                                // No references, add as plain text
-                                result.add(Triple(remaining, false, ""))
-                            }
-                        }
-
-                        // If there were no matches, just add the whole string
-                        if (result.isEmpty()) {
-                            result.add(Triple(rawValue, false, ""))
-                        }
-
-                        result
-                    }
-
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Toggle button for edit mode
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(onClick = { editMode = !editMode }) {
-                                Text(if (editMode) "Block View" else "Text Edit")
-                            }
-                        }
-
-                        if (editMode) {
-                            // Text edit mode - simple text field
-                            OutlinedTextField(
-                                value = editValue,
-                                onValueChange = {
-                                    editValue = it
-                                    onPropertyChange(property.name, it)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        } else {
-                            // Block mode - Scratch-like interface with reference blocks
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(
-                                        1.dp,
-                                        MaterialTheme.colors.onSurface.copy(alpha = 0.12f),
-                                        MaterialTheme.shapes.small
-                                    )
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Render each segment
-                                segments.forEach { (text, isReference, originalText) ->
-                                    if (isReference) {
-                                        // Render as a reference block
-                                        val isVariable = text.startsWith("var.")
-                                        val backgroundColor = if (isVariable) {
-                                            MaterialTheme.colors.primary
-                                        } else {
-                                            MaterialTheme.colors.secondary
-                                        }
-
-                                        // Check if this was part of interpolation
-                                        val isInterpolated = originalText.startsWith("\${")
-
-                                        // Create a row for the reference with optional interpolation syntax
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 2.dp)
-                                        ) {
-                                            // Show interpolation start if needed
-                                            if (isInterpolated) {
-                                                Text(
-                                                    text = "\${",
-                                                    modifier = Modifier.padding(end = 2.dp)
-                                                )
-                                            }
-
-                                            // The reference itself
-                                            Button(
-                                                onClick = {
-                                                    // Navigate to the reference
-                                                    if (isVariable && onNavigateToVariable != null) {
-                                                        val varName = text.substring(4)
-                                                        onNavigateToVariable(varName)
-                                                    } else if (text.contains(".") && onNavigateToResource != null) {
-                                                        val parts = text.split(".")
-                                                        if (parts.size >= 2) {
-                                                            onNavigateToResource(parts[0], parts[1])
-                                                        }
-                                                    }
-                                                },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    backgroundColor = backgroundColor
-                                                ),
-                                                contentPadding = PaddingValues(
-                                                    horizontal = 8.dp,
-                                                    vertical = 2.dp
-                                                ),
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = text,
-                                                    color = MaterialTheme.colors.onPrimary,
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-
-                                            // Show interpolation end if needed
-                                            if (isInterpolated) {
-                                                Text(
-                                                    text = "}",
-                                                    modifier = Modifier.padding(start = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        // Render as regular text
+                            
+                            is HCLExpressionParser.ExpressionSegment.VariableReference -> {
+                                // Create a row for the variable reference with optional interpolation syntax
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                ) {
+                                    // Show interpolation start if needed
+                                    if (segment.isInterpolated) {
                                         Text(
-                                            text = text,
-                                            modifier = Modifier.padding(end = 4.dp)
+                                            text = "\${",
+                                            modifier = Modifier.padding(end = 2.dp)
+                                        )
+                                    }
+                                    
+                                    // The variable reference as a button - use originalText to preserve exact format
+                                    Button(
+                                        onClick = {
+                                            // Navigate to the variable
+                                            if (onNavigateToVariable != null) {
+                                                onNavigateToVariable(segment.variableName)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = MaterialTheme.colors.primary
+                                        ),
+                                        contentPadding = PaddingValues(
+                                            horizontal = 8.dp,
+                                            vertical = 2.dp
+                                        ),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        // If interpolated, don't include the ${} since we're already showing that
+                                        // If not interpolated, use the original text
+                                        Text(
+                                            text = if (segment.isInterpolated) "var.${segment.variableName}" else segment.originalText,
+                                            color = MaterialTheme.colors.onPrimary,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    
+                                    // Show interpolation end if needed
+                                    if (segment.isInterpolated) {
+                                        Text(
+                                            text = "}",
+                                            modifier = Modifier.padding(start = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            is HCLExpressionParser.ExpressionSegment.ResourceReference -> {
+                                // Create a row for the resource reference with optional interpolation syntax
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                ) {
+                                    // Show interpolation start if needed
+                                    if (segment.isInterpolated) {
+                                        Text(
+                                            text = "\${",
+                                            modifier = Modifier.padding(end = 2.dp)
+                                        )
+                                    }
+                                    
+                                    // The resource reference as a button - use originalText to preserve exact format
+                                    Button(
+                                        onClick = {
+                                            // Navigate to the resource
+                                            if (onNavigateToResource != null) {
+                                                onNavigateToResource(segment.resourceType, segment.resourceName)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = MaterialTheme.colors.secondary
+                                        ),
+                                        contentPadding = PaddingValues(
+                                            horizontal = 8.dp,
+                                            vertical = 2.dp
+                                        ),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        // If interpolated, don't include the ${} since we're already showing that
+                                        // If not interpolated, use the original text
+                                        Text(
+                                            text = if (segment.isInterpolated) 
+                                                "${segment.resourceType}.${segment.resourceName}${segment.attribute?.let { ".$it" } ?: ""}" 
+                                                else segment.originalText,
+                                            color = MaterialTheme.colors.onPrimary,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    
+                                    // Show interpolation end if needed
+                                    if (segment.isInterpolated) {
+                                        Text(
+                                            text = "}",
+                                            modifier = Modifier.padding(start = 2.dp)
                                         )
                                     }
                                 }
@@ -649,6 +609,9 @@ fun propertyEditor(
                     }
                 }
             }
+        }
+    }
+}
 
             PropertyType.NUMBER -> {
                 // Use a key combining block ID and property name to reset state
