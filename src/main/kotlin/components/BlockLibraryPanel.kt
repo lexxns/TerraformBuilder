@@ -24,7 +24,8 @@ fun blockLibraryPanel(
     onGithubClick: () -> Unit,
     onLocalDirectoryClick: () -> Unit,
     onVariablesClick: () -> Unit,
-    highlightVariableButton: Boolean = false
+    onGenerateTerraformClick: () -> Unit,
+    highlightVariableButton: Boolean = false,
 ) {
     var expandedCategories by remember { mutableStateOf(setOf<BlockType>()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -50,7 +51,7 @@ fun blockLibraryPanel(
             ) {
                 Text("Load from GitHub")
             }
-            
+
             Button(
                 onClick = onLocalDirectoryClick,
                 modifier = Modifier
@@ -64,7 +65,7 @@ fun blockLibraryPanel(
                 onClick = onVariablesClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 8.dp),
                 colors = if (highlightVariableButton) {
                     // Use a glowing highlight effect for the variables button
                     ButtonDefaults.buttonColors(
@@ -84,6 +85,24 @@ fun blockLibraryPanel(
                     } else {
                         MaterialTheme.typography.button
                     }
+                )
+            }
+
+            Button(
+                onClick = onGenerateTerraformClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = MaterialTheme.colors.primaryVariant,
+                    contentColor = MaterialTheme.colors.onPrimary
+                )
+            ) {
+                Text(
+                    text = "Generate Terraform",
+                    style = MaterialTheme.typography.button.copy(
+                        fontWeight = FontWeight.Bold
+                    )
                 )
             }
 
@@ -138,7 +157,7 @@ fun blockLibraryPanel(
                                 "Expand $category"
                             }
                         )
-                        Spacer(modifier = androidx.compose.ui.Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = category.name,
                             style = MaterialTheme.typography.subtitle1

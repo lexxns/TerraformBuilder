@@ -7,7 +7,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.MaterialTheme
+import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import components.TerraformGenerationHandler
 import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
@@ -151,6 +152,7 @@ fun editor(
     var showVariablesDialog by remember { mutableStateOf(false) }
     var selectedBlockId by remember { mutableStateOf<String?>(null) }
     var hoveredVariableName by remember { mutableStateOf<String?>(null) }
+    val terraformGenerationHandler = remember { TerraformGenerationHandler() }
 
     if (showGithubDialog) {
         GithubUrlDialog(
@@ -314,6 +316,11 @@ fun editor(
         )
     }
 
+    if (terraformGenerationHandler.showDialog.value) {
+        showTerraformGenerationHandler(terraformGenerationHandler)
+    }
+    terraformGenerationHandler.fileDialogComponent(blockState, variableState, coroutineScope)
+
     // Main layout
     Column(modifier = Modifier.fillMaxSize()) {
         // File Menu
@@ -333,14 +340,6 @@ fun editor(
                 isProjectOpen = true
             )
         }
-
-        generateTerraformButton(
-            blockState = blockState,
-            variableState = variableState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 16.dp)
-        )
 
         // Content area
         Row(modifier = Modifier.fillMaxSize()) {
@@ -364,7 +363,10 @@ fun editor(
                 onGithubClick = { showGithubDialog = true },
                 onLocalDirectoryClick = { showLocalDirectoryDialog = true },
                 onVariablesClick = { showVariablesDialog = true },
-                highlightVariableButton = hoveredVariableName != null
+                highlightVariableButton = hoveredVariableName != null,
+                onGenerateTerraformClick = {
+                    terraformGenerationHandler.startGeneration()
+                }
             )
 
             // Workspace Area
@@ -586,4 +588,47 @@ fun editor(
             }
         }
     }
+}
+
+private fun showTerraformGenerationHandler(terraformGenerationHandler: TerraformGenerationHandler) {
+    AlertDialog(
+        onDismissRequest = { terraformGenerationHandler.closeDialog() },
+        title = { Text("Generate Terraform Code") },
+        text = {
+            if (terraformGenerationHandler.isGenerating.value) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Generating Terraform code...")
+                }
+            } else {
+                Text(
+                    terraformGenerationHandler.resultMessage.value
+                        ?: "Choose a directory where Terraform files will be generated."
+                )
+            }
+        },
+        confirmButton = {
+            if (!terraformGenerationHandler.isGenerating.value && terraformGenerationHandler.resultMessage.value == null) {
+                Button(onClick = { terraformGenerationHandler.showFileSelector() }) {
+                    Text("Select Directory")
+                }
+            } else {
+                TextButton(onClick = { terraformGenerationHandler.closeDialog() }) {
+                    Text("Close")
+                }
+            }
+        },
+        dismissButton = {
+            if (!terraformGenerationHandler.isGenerating.value && terraformGenerationHandler.resultMessage.value == null) {
+                TextButton(onClick = { terraformGenerationHandler.closeDialog() }) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
 }
