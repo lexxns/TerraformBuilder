@@ -29,16 +29,6 @@ import terraformbuilder.github.GithubUrlParser
 import terraformbuilder.terraform.*
 import java.util.*
 
-// Library block creation helper
-private fun createLibraryBlock(type: BlockType, resourceType: ResourceType): Block {
-    return createBlock(
-        id = UUID.randomUUID().toString(),
-        type = type,
-        content = resourceType.displayName,
-        resourceType = resourceType
-    )
-}
-
 // Generate default names for resources
 private fun generateDefaultName(resourceType: ResourceType): String {
     val randomId = UUID.randomUUID().toString().substring(0, 4)
@@ -67,8 +57,6 @@ fun editor(
     variableState: VariableState
 ) {
     var selectedBlock by remember { mutableStateOf<Block?>(null) }
-    var hoverPosition by remember { mutableStateOf(Offset.Zero) }
-    var hoverDpPosition by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current.density
 
     // Add pan and zoom state
@@ -81,11 +69,9 @@ fun editor(
     var isPanning by remember { mutableStateOf(false) }
     var lastPanPosition by remember { mutableStateOf(Offset.Zero) }
     var draggedBlockId by remember { mutableStateOf<String?>(null) }
-    var lastClickPosition by remember { mutableStateOf<Offset?>(null) }
     var dragStartPosition by remember { mutableStateOf<Offset?>(null) }
     var dragStartBlockId by remember { mutableStateOf<String?>(null) }
     var isDragging by remember { mutableStateOf(false) }
-    var dragThreshold by remember { mutableStateOf(5f) } // Minimum distance to consider a drag
 
     // Force recomposition when any block content changes
     val blockContentVersion = remember { mutableStateOf(0) }
@@ -140,28 +126,6 @@ fun editor(
         return (dpPos - panOffset) / scale
     }
 
-    // Helper function to convert workspace coordinates to screen coordinates
-    fun workspaceToScreen(workspacePos: Offset): Offset {
-        // Apply transform (scale and pan)
-        val screenPos = workspacePos * scale + panOffset
-        // Convert to pixels
-        return Offset(screenPos.x * density, screenPos.y * density)
-    }
-
-    fun isPointInBlock(workspacePoint: Offset, block: Block): Boolean {
-        // Point is already in workspace coordinates
-        return workspacePoint.x >= block.position.x &&
-                workspacePoint.x <= block.position.x + block.size.x &&
-                workspacePoint.y >= block.position.y &&
-                workspacePoint.y <= block.position.y + block.size.y
-    }
-
-    fun findBlockAtPoint(point: Offset): Block? {
-        // Convert point to workspace coordinates
-        val workspacePoint = screenToWorkspace(point)
-        return blockState.blocks.find { block -> isPointInBlock(workspacePoint, block) }
-    }
-
     // Helper function to calculate drag amount in workspace coordinates
     fun calculateWorkspaceDragAmount(currentPos: Offset, startPos: Offset): Offset {
         val currentWorkspace = screenToWorkspace(currentPos)
@@ -186,7 +150,6 @@ fun editor(
 
     var showVariablesDialog by remember { mutableStateOf(false) }
     var selectedBlockId by remember { mutableStateOf<String?>(null) }
-    var hoveredBlockId by remember { mutableStateOf<String?>(null) }
     var hoveredVariableName by remember { mutableStateOf<String?>(null) }
 
     if (showGithubDialog) {
