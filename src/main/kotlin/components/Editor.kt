@@ -26,12 +26,7 @@ import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser
-import terraformbuilder.terraform.LocalDirectoryLoader
-import terraformbuilder.terraform.TerraformParser
-import terraformbuilder.terraform.TerraformProperties
-import terraformbuilder.terraform.TerraformVariable
-import terraformbuilder.terraform.VariableState
-import java.io.File
+import terraformbuilder.terraform.*
 import java.util.*
 
 // Library block creation helper
@@ -54,7 +49,7 @@ private fun generateDefaultName(resourceType: ResourceType): String {
 
 // Format resource name for Terraform compatibility
 // Should match the format used in TerraformCodeGenerator.formatResourceName
-private fun formatResourceName(content: String): String {
+fun formatResourceName(content: String): String {
     // Convert to valid Terraform resource name: lowercase, underscores, no special chars
     return content.lowercase().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
 }
@@ -272,7 +267,7 @@ fun editor(
             errorMessage = errorMessage
         )
     }
-    
+
     if (showLocalDirectoryDialog) {
         loadDirectoryDialog(
             onDismiss = {
@@ -596,20 +591,20 @@ fun editor(
                                 onPropertyChange = { propertyName, propertyValue ->
                                     blockState.updateBlockProperty(id, propertyName, propertyValue)
                                 },
-                                onNavigateToVariable = { variableName -> 
+                                onNavigateToVariable = { variableName ->
                                     // Show variables dialog focused on this variable
                                     hoveredVariableName = variableName
                                     showVariablesDialog = true
                                 },
                                 onNavigateToResource = { resourceType, resourceName ->
                                     // Find and highlight the referenced resource
-                                    blockState.blocks.find { b -> 
-                                        b.resourceType.resourceName == resourceType && 
-                                        formatResourceName(b.content) == resourceName 
+                                    blockState.blocks.find { b ->
+                                        b.resourceType.resourceName == resourceType &&
+                                                formatResourceName(b.content) == resourceName
                                     }?.let { foundBlock ->
                                         // Highlight/select the found block
                                         selectedBlockId = foundBlock.id
-                                        
+
                                         // Pan to center the found block
                                         panOffset = Offset(
                                             -foundBlock.position.x + 400,
@@ -629,4 +624,3 @@ fun editor(
         }
     }
 }
-

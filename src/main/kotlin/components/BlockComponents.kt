@@ -1,6 +1,7 @@
 package terraformbuilder.components
 
 // Add new imports
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import terraformbuilder.ResourceType
 import terraformbuilder.terraform.TerraformProperties
+import terraformbuilder.terraform.TerraformReferenceAnalyzer
 import terraformbuilder.utils.OffsetSerializer
 import java.util.*
 import kotlin.math.*
@@ -266,22 +267,30 @@ class BlockState {
         val block = _blocks.find { it.id == blockId } ?: return emptyMap()
         return block.properties.toMap()
     }
-    
+
     // Check if a block is referenced by any other block's properties
     fun isBlockReferenced(blockId: String): Boolean {
         val block = _blocks.find { it.id == blockId } ?: return false
         val resourceType = block.resourceType.resourceName
         val resourceName = formatResourceName(block.content)
-        val referencePattern = "$resourceType.$resourceName"
-        
-        // Check all blocks' properties for references to this block
+        val referenceAnalyzer = TerraformReferenceAnalyzer()
+
         return _blocks.any { otherBlock ->
-            otherBlock.id != blockId && otherBlock.properties.values.any { 
-                propertyValue -> propertyValue.contains(referencePattern) 
+            if (otherBlock.id == blockId) return@any false
+
+            // Use the analyzer to check each property
+            otherBlock.properties.values.any { propertyValue ->
+                // Find all resource references in this property
+                val references = referenceAnalyzer.findResourceReferences(propertyValue)
+
+                // Check if any reference matches our block
+                references.any { (refType, refName) ->
+                    refType == resourceType && refName == resourceName
+                }
             }
         }
     }
-    
+
     // Helper to format resource name for reference checking
     private fun formatResourceName(content: String): String {
         // Convert to valid Terraform resource name: lowercase, underscores, no special chars
@@ -529,7 +538,7 @@ fun blockView(
     val showOutputPoint = showConnectionPoints &&
             (activeDragState == null || !activeDragState.isActive ||
                     activeDragState.sourcePointType == ConnectionPointType.INPUT)
-                    
+
     // Set up reference highlighting animation
     val referenceAlpha by animateFloatAsState(
         targetValue = if (isReferenced) 1f else 0f,
@@ -712,8 +721,8 @@ fun blockView(
                     text = block.content,
                     color = Color.White,
                     style = MaterialTheme.typography.body1.copy(
-                        fontWeight = if (isReferenced) FontWeight.Bold 
-                                    else FontWeight.Normal
+                        fontWeight = if (isReferenced) FontWeight.Bold
+                        else FontWeight.Normal
                     )
                 )
             }
