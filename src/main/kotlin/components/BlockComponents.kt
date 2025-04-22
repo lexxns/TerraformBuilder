@@ -199,12 +199,115 @@ data class Connection(
 @Serializable
 class BlockState {
     private var _blocks = mutableListOf<Block>()
-    val blocks: List<Block> = _blocks
+    val blocks: List<Block> get() = if (currentCompositeId == null) _blocks else emptyList()
+
+    private var _compositeBlocks = mutableListOf<CompositeBlock>()
+    val compositeBlocks: List<CompositeBlock> get() = if (currentCompositeId == null) _compositeBlocks else emptyList()
+
+    // Track which composite block we're currently "inside" - null means we're at the root level
+    private var currentCompositeId: String? = null
 
     private var _connections = mutableListOf<Connection>()
     val connections: List<Connection> = _connections
 
     val dragState = ConnectionDragState()
+
+    fun addCompositeBlock(compositeBlock: CompositeBlock) {
+        _compositeBlocks.add(compositeBlock)
+    }
+
+    // Child blocks of the current composite being viewed
+    val currentCompositeChildren: List<Block>
+        get() = if (currentCompositeId != null) {
+            _compositeBlocks.find { it.id == currentCompositeId }?.children ?: emptyList()
+        } else {
+            emptyList()
+        }
+
+    // Enter a composite block to view/edit its children
+    fun enterComposite(compositeId: String) {
+        if (_compositeBlocks.any { it.id == compositeId }) {
+            currentCompositeId = compositeId
+        }
+    }
+
+    // Exit back to the main view
+    fun exitComposite() {
+        currentCompositeId = null
+    }
+
+    // Add a pre-configured composite
+    fun addRestApiComposite(name: String, position: Offset): CompositeBlock {
+        val composite = CompositeBlockFactory.createRestApi(name, position)
+        _compositeBlocks.add(composite)
+        return composite
+    }
+
+    fun addVpcNetworkComposite(name: String, position: Offset): CompositeBlock {
+        val composite = CompositeBlockFactory.createVpcNetwork(name, position)
+        _compositeBlocks.add(composite)
+        return composite
+    }
+
+    fun addServerlessBackendComposite(name: String, position: Offset): CompositeBlock {
+        val composite = CompositeBlockFactory.createServerlessBackend(name, position)
+        _compositeBlocks.add(composite)
+        return composite
+    }
+
+    fun addDatabaseClusterComposite(name: String, position: Offset): CompositeBlock {
+        val composite = CompositeBlockFactory.createDatabaseCluster(name, position)
+        _compositeBlocks.add(composite)
+        return composite
+    }
+
+    // Group existing blocks into a new composite
+    fun groupBlocks(blockIds: List<String>, name: String): CompositeBlock? {
+        // Find the blocks to group
+        val blocksToGroup = _blocks.filter { it.id in blockIds }
+        if (blocksToGroup.isEmpty()) return null
+
+        // Create a new empty composite
+        val composite = CompositeBlockFactory.createCustomGroup(name, Offset.Zero)
+
+        // Calculate position based on blocks
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+
+        blocksToGroup.forEach { block ->
+            minX = minOf(minX, block.position.x)
+            minY = minOf(minY, block.position.y)
+        }
+
+        composite.position = Offset(minX, minY)
+
+        // Add blocks to composite
+        composite.children.addAll(blocksToGroup)
+
+        // Remove blocks from main list
+        _blocks.removeAll { it.id in blockIds }
+
+        // Add composite to list
+        _compositeBlocks.add(composite)
+
+        return composite
+    }
+
+    // Ungroup a composite
+    fun ungroupComposite(compositeId: String) {
+        val composite = _compositeBlocks.find { it.id == compositeId } ?: return
+
+        // Add all children back to main list
+        _blocks.addAll(composite.children)
+
+        // Remove the composite
+        _compositeBlocks.remove(composite)
+
+        // If we were viewing this composite, exit it
+        if (currentCompositeId == compositeId) {
+            currentCompositeId = null
+        }
+    }
 
     fun addBlock(block: Block) {
         // Initialize default properties when adding a block

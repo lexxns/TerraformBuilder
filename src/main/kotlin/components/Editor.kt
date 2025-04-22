@@ -74,8 +74,50 @@ fun editor(
     var dragStartBlockId by remember { mutableStateOf<String?>(null) }
     var isDragging by remember { mutableStateOf(false) }
 
+    // State for handling template selection
+    var showTemplateDialog by remember { mutableStateOf(false) }
+    var selectedTemplateName by remember { mutableStateOf("") }
+    var selectedTemplateFactory by remember { mutableStateOf<((String, Offset) -> CompositeBlock)?>(null) }
+
     // Force recomposition when any block content changes
     val blockContentVersion = remember { mutableStateOf(0) }
+
+    // Template dialog
+    if (showTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTemplateDialog = false },
+            title = { Text("Create $selectedTemplateName") },
+            text = {
+                var templateName by remember { mutableStateOf(selectedTemplateName) }
+
+                OutlinedTextField(
+                    value = templateName,
+                    onValueChange = { templateName = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        // Create the template at a default position
+                        selectedTemplateFactory?.let { factory ->
+                            val composite = factory(selectedTemplateName, Offset(100f, 100f))
+                            blockState.addCompositeBlock(composite)
+                        }
+                        showTemplateDialog = false
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTemplateDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     // Handle keyboard events for panning and zooming
     LaunchedEffect(Unit) {
@@ -127,7 +169,6 @@ fun editor(
         return (dpPos - panOffset) / scale
     }
 
-    // Helper function to calculate drag amount in workspace coordinates
     fun calculateWorkspaceDragAmount(currentPos: Offset, startPos: Offset): Offset {
         val currentWorkspace = screenToWorkspace(currentPos)
         val startWorkspace = screenToWorkspace(startPos)
@@ -343,6 +384,19 @@ fun editor(
 
         // Content area
         Row(modifier = Modifier.fillMaxSize()) {
+            // Template Library panel
+            templateLibraryPanel(
+                onTemplateSelected = { name, factory ->
+                    selectedTemplateName = name
+                    selectedTemplateFactory = factory
+                    showTemplateDialog = true
+                },
+                modifier = Modifier
+                    .width(250.dp)
+                    .fillMaxHeight()
+                    .background(Color.LightGray)
+            )
+
             // Block Library Panel
             blockLibraryPanel(
                 modifier = Modifier
@@ -422,7 +476,10 @@ fun editor(
                                     val block = blockState.blocks.find { it.id == draggedBlockId }
                                     if (block != null) {
                                         val workspaceDragAmount =
-                                            calculateWorkspaceDragAmount(change.position, dragStartPosition!!)
+                                            calculateWorkspaceDragAmount(
+                                                change.position,
+                                                dragStartPosition!!
+                                            )
                                         val newPosition = block.position + workspaceDragAmount
                                         blockState.updateBlockPosition(block.id, newPosition)
                                         dragStartPosition = change.position
@@ -590,6 +647,7 @@ fun editor(
     }
 }
 
+@Composable
 private fun showTerraformGenerationHandler(terraformGenerationHandler: TerraformGenerationHandler) {
     AlertDialog(
         onDismissRequest = { terraformGenerationHandler.closeDialog() },
