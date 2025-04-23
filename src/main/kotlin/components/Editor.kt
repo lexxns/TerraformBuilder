@@ -779,7 +779,7 @@ fun editor(
                         }
                     } else {
                         // We're inside a composite, show its children
-                        val composite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                        val composite = blockState.allComposites.find { it.id == viewState.selectedCompositeId }
                         composite?.children?.forEach { childBlock ->
                             blockView(
                                 block = childBlock,
@@ -810,7 +810,7 @@ fun editor(
                 when {
                     // Editing a composite block
                     viewState.selectedCompositeId != null -> {
-                        val composite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                        val composite = blockState.allComposites.find { it.id == viewState.selectedCompositeId }
                         composite?.let {
                             compositePropertyEditorPanel(
                                 compositeBlock = it,
