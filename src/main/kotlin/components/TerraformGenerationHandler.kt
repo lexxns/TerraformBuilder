@@ -80,7 +80,7 @@ class TerraformGenerationHandler {
             isGenerating.value = true
 
             try {
-                if (blockState.blocks.isEmpty()) {
+                if (blockState.allBlocks.isEmpty()) {
                     resultMessage.value = "Error: No resources to generate. Please add at least one resource."
                     return@launch
                 }
@@ -93,7 +93,7 @@ class TerraformGenerationHandler {
                     // Generate code in the background thread
                     val generator = TerraformCodeGenerator()
                     generator.generateCode(
-                        blocks = blockState.blocks,
+                        blocks = blockState.allBlocks,
                         connections = blockState.connections,
                         variables = variableState.variables,
                         outputDir = outputDir

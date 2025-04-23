@@ -37,13 +37,17 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import terraformbuilder.ResourceType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformReferenceAnalyzer
 import terraformbuilder.utils.OffsetSerializer
 import java.util.*
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Serializable
 enum class ConnectionPointType {
@@ -198,14 +202,13 @@ data class Connection(
 // Block state management
 @Serializable
 class BlockState {
-    private var _blocks = mutableListOf<Block>()
-    val blocks: List<Block> get() = if (currentCompositeId == null) _blocks else emptyList()
+    @Contextual
+    private var _blocks = mutableStateListOf<Block>()
+    val allBlocks: List<Block> get() = _blocks
 
-    private var _compositeBlocks = mutableListOf<CompositeBlock>()
-    val compositeBlocks: List<CompositeBlock> get() = if (currentCompositeId == null) _compositeBlocks else emptyList()
-
-    // Track which composite block we're currently "inside" - null means we're at the root level
-    private var currentCompositeId: String? = null
+    @Contextual
+    private var _compositeBlocks = mutableStateListOf<CompositeBlock>()
+    val allComposites: List<CompositeBlock> get() = _compositeBlocks
 
     private var _connections = mutableListOf<Connection>()
     val connections: List<Connection> = _connections
@@ -216,24 +219,11 @@ class BlockState {
         _compositeBlocks.add(compositeBlock)
     }
 
-    // Child blocks of the current composite being viewed
-    val currentCompositeChildren: List<Block>
-        get() = if (currentCompositeId != null) {
-            _compositeBlocks.find { it.id == currentCompositeId }?.children ?: emptyList()
-        } else {
-            emptyList()
-        }
-
-    // Enter a composite block to view/edit its children
-    fun enterComposite(compositeId: String) {
-        if (_compositeBlocks.any { it.id == compositeId }) {
-            currentCompositeId = compositeId
-        }
-    }
-
-    // Exit back to the main view
-    fun exitComposite() {
-        currentCompositeId = null
+    // Get children of a specific composite
+    fun getCompositeChildren(compositeId: String): List<Block> {
+        return _compositeBlocks
+            .find { it.id == compositeId }
+            ?.children ?: emptyList()
     }
 
     // Add a pre-configured composite
@@ -302,11 +292,6 @@ class BlockState {
 
         // Remove the composite
         _compositeBlocks.remove(composite)
-
-        // If we were viewing this composite, exit it
-        if (currentCompositeId == compositeId) {
-            currentCompositeId = null
-        }
     }
 
     fun addBlock(block: Block) {
@@ -1109,11 +1094,6 @@ fun blockItem(
             )
         }
     }
-}
-
-// Helper extension to calculate distance between points
-fun Offset.getDistance(): Float {
-    return sqrt(x * x + y * y)
 }
 
 // Add extension function to add two offsets

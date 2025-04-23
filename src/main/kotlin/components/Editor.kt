@@ -1,13 +1,14 @@
 package terraformbuilder.components
 
-import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +28,10 @@ import kotlinx.coroutines.launch
 import terraformbuilder.ResourceType
 import terraformbuilder.github.GithubService
 import terraformbuilder.github.GithubUrlParser
-import terraformbuilder.terraform.*
+import terraformbuilder.terraform.LocalDirectoryLoader
+import terraformbuilder.terraform.TerraformParser
+import terraformbuilder.terraform.TerraformVariable
+import terraformbuilder.terraform.VariableState
 import java.util.*
 
 // Generate default names for resources
@@ -46,7 +50,6 @@ fun formatResourceName(content: String): String {
 }
 
 @Composable
-@Preview
 fun editor(
     onNewProject: (String, String) -> Unit,
     onOpenProject: () -> Unit,
@@ -57,13 +60,27 @@ fun editor(
     blockState: BlockState,
     variableState: VariableState
 ) {
-    var selectedBlock by remember { mutableStateOf<Block?>(null) }
+    val viewState = remember { EditorViewState() }
+    var editingChildBlockId by remember { mutableStateOf<String?>(null) }
     val density = LocalDensity.current.density
+    var showGroupDialog by remember { mutableStateOf(false) }
+    var groupNameInput by remember { mutableStateOf("New Group") }
 
     // Add pan and zoom state
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var scale by remember { mutableStateOf(1f) }
     val focusRequester = remember { FocusRequester() }
+
+    // Template selection state
+    var showTemplateDialog by remember { mutableStateOf(false) }
+    var selectedTemplateName by remember { mutableStateOf("") }
+    var templateName by remember { mutableStateOf("") }
+    var selectedTemplateFactory by remember { mutableStateOf<((String, Offset) -> CompositeBlock)?>(null) }
+
+    // Update templateName when selectedTemplateName changes
+    LaunchedEffect(selectedTemplateName) {
+        templateName = selectedTemplateName
+    }
 
     // Track when the mouse button is down during a drag
     var isMouseDown by remember { mutableStateOf(false) }
@@ -74,49 +91,24 @@ fun editor(
     var dragStartBlockId by remember { mutableStateOf<String?>(null) }
     var isDragging by remember { mutableStateOf(false) }
 
-    // State for handling template selection
-    var showTemplateDialog by remember { mutableStateOf(false) }
-    var selectedTemplateName by remember { mutableStateOf("") }
-    var selectedTemplateFactory by remember { mutableStateOf<((String, Offset) -> CompositeBlock)?>(null) }
+    // Multi-selection state for grouping
+    var selectedBlockIds by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Force recomposition when any block content changes
     val blockContentVersion = remember { mutableStateOf(0) }
 
-    // Template dialog
-    if (showTemplateDialog) {
-        AlertDialog(
-            onDismissRequest = { showTemplateDialog = false },
-            title = { Text("Create $selectedTemplateName") },
-            text = {
-                var templateName by remember { mutableStateOf(selectedTemplateName) }
-
-                OutlinedTextField(
-                    value = templateName,
-                    onValueChange = { templateName = it },
-                    label = { Text("Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // Create the template at a default position
-                        selectedTemplateFactory?.let { factory ->
-                            val composite = factory(selectedTemplateName, Offset(100f, 100f))
-                            blockState.addCompositeBlock(composite)
-                        }
-                        showTemplateDialog = false
-                    }
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTemplateDialog = false }) {
-                    Text("Cancel")
-                }
+    // Calculate visible elements based on view state
+    val visibleBlocks =
+        remember(blockState.allBlocks, blockState.allComposites, viewState.mode, viewState.activeCompositeId) {
+            if (viewState.isInMainView()) {
+                blockState.allBlocks
+            } else {
+                blockState.getCompositeChildren(viewState.activeCompositeId!!)
             }
-        )
+        }
+
+    val visibleComposites = remember(blockState.allComposites, viewState.mode) {
+        if (viewState.isInMainView()) blockState.allComposites else emptyList()
     }
 
     // Handle keyboard events for panning and zooming
@@ -128,14 +120,14 @@ fun editor(
         scale = 1f
 
         // If there are blocks, center on them
-        if (blockState.blocks.isNotEmpty()) {
+        if (visibleBlocks.isNotEmpty()) {
             // Find the center of all blocks
             var minX = Float.MAX_VALUE
             var minY = Float.MAX_VALUE
             var maxX = Float.MIN_VALUE
             var maxY = Float.MIN_VALUE
 
-            blockState.blocks.forEach { block ->
+            visibleBlocks.forEach { block ->
                 val left = block.position.x
                 val top = block.position.y
                 val right = left + block.size.x
@@ -169,12 +161,6 @@ fun editor(
         return (dpPos - panOffset) / scale
     }
 
-    fun calculateWorkspaceDragAmount(currentPos: Offset, startPos: Offset): Offset {
-        val currentWorkspace = screenToWorkspace(currentPos)
-        val startWorkspace = screenToWorkspace(startPos)
-        return currentWorkspace - startWorkspace
-    }
-
     // When blocks start a connection, update our state
     val onConnectionDragStart: (Block, ConnectionPointType) -> Unit = { block, pointType ->
         // Start the connection
@@ -191,9 +177,55 @@ fun editor(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     var showVariablesDialog by remember { mutableStateOf(false) }
-    var selectedBlockId by remember { mutableStateOf<String?>(null) }
     var hoveredVariableName by remember { mutableStateOf<String?>(null) }
     val terraformGenerationHandler = remember { TerraformGenerationHandler() }
+
+    // Template dialog
+    if (showTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTemplateDialog = false },
+            title = { Text("Create $selectedTemplateName") },
+            text = {
+                OutlinedTextField(
+                    value = templateName,
+                    onValueChange = { templateName = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selectedTemplateFactory?.let { factory ->
+                            // Calculate position at the center of the current view
+                            val viewportCenter = Offset(
+                                (800f / 2f - panOffset.x) / scale,
+                                (600f / 2f - panOffset.y) / scale
+                            )
+
+                            // Create the composite
+                            val composite = factory(templateName, viewportCenter)
+
+                            // Add it to the state
+                            blockState.addCompositeBlock(composite)
+                            println("Added composite to blockState: ${composite.name}")
+
+                            // Select the new composite
+                            viewState.selectComposite(composite.id)
+                        }
+                        showTemplateDialog = false
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTemplateDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showGithubDialog) {
         GithubUrlDialog(
@@ -251,7 +283,7 @@ fun editor(
                                 }
                             }
 
-                            if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                            if (blockState.allBlocks.isEmpty() && variableState.variables.isEmpty()) {
                                 errorMessage = "No Terraform resources or variables found in files"
                                 return@launch
                             }
@@ -327,7 +359,7 @@ fun editor(
                             }
                         }
 
-                        if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                        if (blockState.allBlocks.isEmpty() && variableState.variables.isEmpty()) {
                             errorMessage = "No Terraform resources or variables found in files"
                             return@launch
                         }
@@ -353,7 +385,39 @@ fun editor(
             variables = variableState.variables,
             onAddVariable = { variableState.addVariable(it) },
             onRemoveVariable = { variableState.removeVariable(it) },
-            onUpdateVariable = { name, variable: TerraformVariable -> variableState.updateVariable(name, variable) }
+            onUpdateVariable = { name, variable: TerraformVariable ->
+                variableState.updateVariable(name, variable)
+            }
+        )
+    }
+
+    if (showGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { showGroupDialog = false },
+            title = { Text("Create Group") },
+            text = {
+                OutlinedTextField(
+                    value = groupNameInput,
+                    onValueChange = { groupNameInput = it },
+                    label = { Text("Group Name") }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        blockState.groupBlocks(selectedBlockIds, groupNameInput)
+                        selectedBlockIds = emptyList()
+                        showGroupDialog = false
+                    }
+                ) {
+                    Text("Create Group")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGroupDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
@@ -384,47 +448,57 @@ fun editor(
 
         // Content area
         Row(modifier = Modifier.fillMaxSize()) {
-            // Template Library panel
-            templateLibraryPanel(
-                onTemplateSelected = { name, factory ->
-                    selectedTemplateName = name
-                    selectedTemplateFactory = factory
-                    showTemplateDialog = true
-                },
+            // Split the left sidebar into block library and template library
+            Column(
                 modifier = Modifier
-                    .width(250.dp)
                     .fillMaxHeight()
+                    .width(250.dp)
                     .background(Color.LightGray)
-            )
+            ) {
+                // Block library panel (top half)
+                blockLibraryPanel(
+                    modifier = Modifier
+                        .weight(0.5f)
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    onBlockSelected = { block ->
+                        // Create a copy with a unique ID and a default name based on the resource type
+                        val resourceType = block.resourceType
+                        val newBlock = block.copy(
+                            id = UUID.randomUUID().toString(),
+                            content = generateDefaultName(resourceType),
+                            resourceType = resourceType,
+                            description = block.description
+                        )
+                        blockState.addBlock(newBlock)
+                    },
+                    onGithubClick = { showGithubDialog = true },
+                    onLocalDirectoryClick = { showLocalDirectoryDialog = true },
+                    onVariablesClick = { showVariablesDialog = true },
+                    highlightVariableButton = hoveredVariableName != null,
+                    onGenerateTerraformClick = {
+                        terraformGenerationHandler.startGeneration()
+                    }
+                )
 
-            // Block Library Panel
-            blockLibraryPanel(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(250.dp)
-                    .background(Color.LightGray)
-                    .padding(8.dp),
-                onBlockSelected = { block ->
-                    // Create a copy with a unique ID and a default name based on the resource type
-                    val resourceType = block.resourceType
-                    selectedBlock = block.copy(
-                        id = UUID.randomUUID().toString(),
-                        content = generateDefaultName(resourceType),
-                        resourceType = resourceType,
-                        description = block.description
-                    )
-                },
-                onGithubClick = { showGithubDialog = true },
-                onLocalDirectoryClick = { showLocalDirectoryDialog = true },
-                onVariablesClick = { showVariablesDialog = true },
-                highlightVariableButton = hoveredVariableName != null,
-                onGenerateTerraformClick = {
-                    terraformGenerationHandler.startGeneration()
-                }
-            )
+                Divider(color = Color.DarkGray, thickness = 1.dp)
+
+                // Template library panel (bottom half)
+                templateLibraryPanel(
+                    onTemplateSelected = { name, factory ->
+                        selectedTemplateName = name
+                        templateName = name
+                        selectedTemplateFactory = factory
+                        showTemplateDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(0.5f)
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                )
+            }
 
             // Workspace Area
-            // Modified pointerInput for stable panning
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -440,54 +514,73 @@ fun editor(
 
                                 // Find block at click position
                                 val workspacePoint = screenToWorkspace(offset)
-                                val blockAtPoint = blockState.blocks.find { block ->
-                                    workspacePoint.x >= block.position.x &&
-                                            workspacePoint.x <= block.position.x + block.size.x &&
-                                            workspacePoint.y >= block.position.y &&
-                                            workspacePoint.y <= block.position.y + block.size.y
+
+                                // First check if we clicked on a composite
+                                val compositeAtPoint = visibleComposites.find { composite ->
+                                    val radius = 50f // Using 100dp diameter
+                                    val center = composite.position + Offset(radius, radius)
+                                    (workspacePoint - center).getDistance() <= radius
                                 }
 
-                                if (blockAtPoint != null) {
-                                    // Start dragging the block - LOCK the mode to block dragging
-                                    draggedBlockId = blockAtPoint.id
-                                    dragStartBlockId = blockAtPoint.id
-                                    selectedBlockId = blockAtPoint.id
-                                    isPanning = false  // Ensure we're not in panning mode
+                                if (compositeAtPoint != null) {
+                                    // Start dragging the composite
+                                    draggedBlockId = compositeAtPoint.id
+                                    dragStartBlockId = compositeAtPoint.id
+                                    viewState.selectComposite(compositeAtPoint.id)
+                                    isPanning = false
                                 } else {
-                                    // Start panning - LOCK the mode to panning
-                                    isPanning = true
-                                    lastPanPosition = offset
-                                    // Clear any block dragging state
-                                    draggedBlockId = null
-                                    dragStartBlockId = null
+                                    // Check for regular blocks
+                                    val blockAtPoint = visibleBlocks.find { block ->
+                                        workspacePoint.x >= block.position.x &&
+                                                workspacePoint.x <= block.position.x + block.size.x &&
+                                                workspacePoint.y >= block.position.y &&
+                                                workspacePoint.y <= block.position.y + block.size.y
+                                    }
+
+                                    if (blockAtPoint != null) {
+                                        // Start dragging the block
+                                        draggedBlockId = blockAtPoint.id
+                                        dragStartBlockId = blockAtPoint.id
+                                        viewState.selectBlock(blockAtPoint.id)
+                                        isPanning = false
+                                    } else {
+                                        // Start panning
+                                        isPanning = true
+                                        lastPanPosition = offset
+                                        draggedBlockId = null
+                                        dragStartBlockId = null
+                                    }
                                 }
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
                                 isDragging = true
 
-                                // Use completely separate code paths based on the initial mode
                                 if (isPanning) {
-                                    // We're in panning mode - just update the pan offset directly
-                                    // Don't recalculate anything or check for blocks
-                                    panOffset += dragAmount
+                                    // Panning mode - update the pan offset directly
+                                    panOffset += dragAmount.toDpOffset(density)
                                 } else if (draggedBlockId != null && dragStartPosition != null) {
-                                    // We're in block dragging mode
-                                    val block = blockState.blocks.find { it.id == draggedBlockId }
-                                    if (block != null) {
-                                        val workspaceDragAmount =
-                                            calculateWorkspaceDragAmount(
-                                                change.position,
-                                                dragStartPosition!!
-                                            )
-                                        val newPosition = block.position + workspaceDragAmount
-                                        blockState.updateBlockPosition(block.id, newPosition)
-                                        dragStartPosition = change.position
+                                    // Check if we're dragging a composite or regular block
+                                    val composite = visibleComposites.find { it.id == draggedBlockId }
+                                    if (composite != null) {
+                                        // Dragging a composite block
+                                        val dragAmountInDp = dragAmount.toDpOffset(density) / scale
+                                        val newPosition = composite.position + dragAmountInDp
+                                        // Update composite position
+                                        composite.position = newPosition
+                                    } else {
+                                        // Dragging a regular block
+                                        val block = visibleBlocks.find { it.id == draggedBlockId }
+                                        if (block != null) {
+                                            val dragAmountInDp = dragAmount.toDpOffset(density) / scale
+                                            val newPosition = block.position + dragAmountInDp
+                                            blockState.updateBlockPosition(block.id, newPosition)
+                                        }
                                     }
+                                    dragStartPosition = change.position
                                 }
                             },
                             onDragEnd = {
-                                // Clean reset of all state
                                 isMouseDown = false
                                 isPanning = false
                                 isDragging = false
@@ -496,12 +589,16 @@ fun editor(
 
                                 // Keep selection state
                                 if (dragStartBlockId != null) {
-                                    selectedBlockId = dragStartBlockId
+                                    // Check if it's a composite or regular block
+                                    if (visibleComposites.any { it.id == dragStartBlockId }) {
+                                        viewState.selectComposite(dragStartBlockId)
+                                    } else {
+                                        viewState.selectBlock(dragStartBlockId)
+                                    }
                                 }
                                 dragStartBlockId = null
                             },
                             onDragCancel = {
-                                // Full reset
                                 isMouseDown = false
                                 isPanning = false
                                 isDragging = false
@@ -512,6 +609,72 @@ fun editor(
                         )
                     }
             ) {
+                // Navigation breadcrumb if we're inside a composite
+                if (viewState.isInCompositeView()) {
+                    val composite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                    if (composite != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = { viewState.exitToMainView() }
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to main view")
+                                Spacer(Modifier.width(4.dp))
+                                Text("Back")
+                            }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            Text(
+                                text = "Editing: ${composite.name}",
+                                style = MaterialTheme.typography.h6
+                            )
+                        }
+                    }
+                }
+
+                // Group/ungroup action buttons
+                if (selectedBlockIds.size > 1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                // Show group dialog
+                                groupNameInput = "New Group"
+                                showGroupDialog = true
+                            }
+                        ) {
+                            Icon(Icons.Default.Group, "Group selected blocks")
+                        }
+                    }
+                } else if (viewState.selectedCompositeId != null) {
+                    // Ungroup button for selected composite
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                blockState.ungroupComposite(viewState.selectedCompositeId!!)
+                                viewState.setNoneSelected()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.UnfoldMore, // Use an appropriate icon
+                                contentDescription = "Ungroup"
+                            )
+                        }
+                    }
+                }
+
                 // This Box applies the transformation
                 Box(
                     modifier = Modifier
@@ -528,7 +691,7 @@ fun editor(
                         val gridSize = 50f
                         val gridColor = Color(0xFFE0E0E0)
 
-                        // Draw vertical lines
+                        // Draw grid lines...
                         var x = 0f
                         while (x < size.width) {
                             drawLine(
@@ -541,7 +704,6 @@ fun editor(
                             x += gridSize
                         }
 
-                        // Draw horizontal lines
                         var y = 0f
                         while (y < size.height) {
                             drawLine(
@@ -559,75 +721,139 @@ fun editor(
                     connectionCanvas(
                         connections = blockState.connections,
                         dragState = blockState.dragState,
-                        blocks = blockState.blocks,
+                        blocks = visibleBlocks,
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Draw blocks
-                    for (block in blockState.blocks) {
-                        blockView(
-                            block = block,
-                            onDragEnd = { newPosition ->
-                                blockState.updateBlockPosition(block.id, newPosition)
-                            },
-                            onDragStart = { },
-                            onRename = { newContent ->
-                                println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
-                                blockState.updateBlockContent(block.id, newContent)
-                                blockContentVersion.value++
-                                println("WORKSPACE: Incremented block content version to ${blockContentVersion.value}")
-                            },
-                            onConnectionDragStart = onConnectionDragStart,
-                            onUpdateBlockSize = { blockId, size ->
-                                blockState.updateBlockSize(blockId, size)
-                            },
-                            onBlockSelected = { blockId ->
-                                selectedBlockId = blockId
-                                println("Block selected through click: $blockId")
-                            },
-                            isHovered = false,
-                            isReferenced = blockState.isBlockReferenced(block.id),
-                            activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
-                        )
-                    }
+                    // If we're in the main view, render composite blocks and regular blocks
+                    if (viewState.isInMainView()) {
+                        // Draw regular blocks
+                        visibleBlocks.forEach { block ->
+                            blockView(
+                                block = block,
+                                onDragEnd = { newPosition ->
+                                    blockState.updateBlockPosition(block.id, newPosition)
+                                },
+                                onDragStart = { },
+                                onRename = { newContent ->
+                                    println("WORKSPACE: Renaming block ${block.id} from '${block.content}' to '$newContent'")
+                                    blockState.updateBlockContent(block.id, newContent)
+                                    blockContentVersion.value++
+                                    println("WORKSPACE: Incremented block content version to ${blockContentVersion.value}")
+                                },
+                                onConnectionDragStart = onConnectionDragStart,
+                                onUpdateBlockSize = { blockId, size ->
+                                    blockState.updateBlockSize(blockId, size)
+                                },
+                                onBlockSelected = { blockId ->
+                                    viewState.selectBlock(blockId)
+                                    println("Block selected through click: $blockId")
+                                },
+                                isHovered = false,
+                                isReferenced = blockState.isBlockReferenced(block.id),
+                                activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
+                            )
+                        }
 
-                    // Add new block when selected
-                    LaunchedEffect(selectedBlock) {
-                        selectedBlock?.let { block ->
-                            // Get the description from the schema
-                            val description = TerraformProperties.getResourceDescription(block.resourceType)
-                            blockState.addBlock(block.copy(description = description))
-                            selectedBlock = null
+                        // Draw composite blocks
+                        visibleComposites.forEach { composite ->
+                            // Debug log
+                            println("Rendering composite: ${composite.name} at ${composite.position}")
+
+                            compositeBlockView(
+                                compositeBlock = composite,
+                                onDragStart = { /* Handle drag start */ },
+                                onDragEnd = { newPosition ->
+                                    // Update composite position
+                                    composite.position = newPosition
+                                },
+                                onRename = { newName ->
+                                    // Update composite name
+                                    composite.name = newName
+                                },
+                                onBlockSelected = { id ->
+                                    viewState.selectComposite(id)
+                                },
+                                isSelected = viewState.selectedCompositeId == composite.id
+                            )
+                        }
+                    } else {
+                        // We're inside a composite, show its children
+                        val composite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                        composite?.children?.forEach { childBlock ->
+                            blockView(
+                                block = childBlock,
+                                onDragEnd = { newPosition ->
+                                    blockState.updateBlockPosition(childBlock.id, newPosition)
+                                },
+                                onDragStart = { },
+                                onRename = { newContent ->
+                                    blockState.updateBlockContent(childBlock.id, newContent)
+                                    blockContentVersion.value++
+                                },
+                                onConnectionDragStart = onConnectionDragStart,
+                                onUpdateBlockSize = { blockId, size ->
+                                    blockState.updateBlockSize(blockId, size)
+                                },
+                                onBlockSelected = { blockId ->
+                                    editingChildBlockId = blockId
+                                },
+                                isHovered = false,
+                                isReferenced = false,
+                                activeDragState = if (blockState.dragState.isActive) blockState.dragState else null
+                            )
                         }
                     }
                 }
 
-                // Display property editor for selected block
-                selectedBlockId?.let { id ->
-                    key(id, blockContentVersion.value) {
-                        val block = blockState.blocks.find { it.id == id }
+                // Property panel - show different content based on selection
+                when {
+                    // Editing a composite block
+                    viewState.selectedCompositeId != null -> {
+                        val composite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                        composite?.let {
+                            compositePropertyEditorPanel(
+                                compositeBlock = it,
+                                onPropertyChange = { name, value ->
+                                    // Update property
+                                    it.setProperty(name, value)
+                                },
+                                onRename = { newName ->
+                                    // Rename composite
+                                    it.name = newName
+                                },
+                                onEditChild = { childId ->
+                                    // Enter the composite to edit its children
+                                    viewState.enterComposite(it.id)
+                                    editingChildBlockId = childId
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(16.dp)
+                            )
+                        }
+                    }
+
+                    // Editing a regular block
+                    viewState.selectedBlockId != null -> {
+                        val block = blockState.allBlocks.find { it.id == viewState.selectedBlockId }
                         block?.let {
-                            // Property editor panel
                             propertyEditorPanel(
-                                block = block,
+                                block = it,
                                 onPropertyChange = { propertyName, propertyValue ->
-                                    blockState.updateBlockProperty(id, propertyName, propertyValue)
+                                    blockState.updateBlockProperty(it.id, propertyName, propertyValue)
                                 },
                                 onNavigateToVariable = { variableName ->
-                                    // Show variables dialog focused on this variable
                                     hoveredVariableName = variableName
                                     showVariablesDialog = true
                                 },
                                 onNavigateToResource = { resourceType, resourceName ->
-                                    // Find and highlight the referenced resource
-                                    blockState.blocks.find { b ->
+                                    // Find and select referenced resource
+                                    blockState.allBlocks.find { b ->
                                         b.resourceType.resourceName == resourceType &&
                                                 formatResourceName(b.content) == resourceName
                                     }?.let { foundBlock ->
-                                        // Highlight/select the found block
-                                        selectedBlockId = foundBlock.id
-
-                                        // Pan to center the found block
+                                        viewState.selectBlock(foundBlock.id)
                                         panOffset = Offset(
                                             -foundBlock.position.x + 400,
                                             -foundBlock.position.y + 300
@@ -637,7 +863,40 @@ fun editor(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(16.dp)
-                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                    }
+
+                    // Editing a child block inside a composite
+                    editingChildBlockId != null -> {
+                        val currentComposite = blockState.allComposites.find { it.id == viewState.activeCompositeId }
+                        val childBlock = currentComposite?.children?.find { it.id == editingChildBlockId }
+                        childBlock?.let {
+                            propertyEditorPanel(
+                                block = it,
+                                onPropertyChange = { propertyName, propertyValue ->
+                                    blockState.updateBlockProperty(it.id, propertyName, propertyValue)
+                                },
+                                onNavigateToVariable = { variableName ->
+                                    hoveredVariableName = variableName
+                                    showVariablesDialog = true
+                                },
+                                onNavigateToResource = { resourceType, resourceName ->
+                                    // Handle resource navigation within the composite
+                                    currentComposite.children.find { b ->
+                                        b.resourceType.resourceName == resourceType &&
+                                                formatResourceName(b.content) == resourceName
+                                    }?.let { foundBlock ->
+                                        editingChildBlockId = foundBlock.id
+                                        panOffset = Offset(
+                                            -foundBlock.position.x + 400,
+                                            -foundBlock.position.y + 300
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(16.dp)
                             )
                         }
                     }

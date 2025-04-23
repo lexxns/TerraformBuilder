@@ -129,7 +129,7 @@ fun app() {
                 projectState.value.currentProject?.let { project ->
                     ProjectManager.saveProject(
                         project = project,
-                        blocks = blockState.blocks,
+                        blocks = blockState.allBlocks,
                         variables = variableState.variables,
                         connections = blockState.connections
                     )
@@ -299,7 +299,7 @@ fun app() {
             }
         )
     }
-    
+
     // Local Directory Dialog
     if (showLocalDirectoryDialog) {
         loadDirectoryDialog(
@@ -313,14 +313,14 @@ fun app() {
                     errorMessage = null
                     try {
                         println("APP: Processing local directory: ${directory.absolutePath}")
-                        
+
                         // Create a new project first
                         val projectName = directory.name
                         val projectDescription = "Imported from ${directory.absolutePath}"
                         val project = ProjectManager.createProject(projectName, projectDescription)
                         projectState.value = projectState.value.setCurrentProject(project)
                         ProjectManager.saveProjectState(projectState.value)
-                        
+
                         // Clear existing blocks and variables
                         blockState.clearAll()
                         variableState.clearAll()
@@ -361,15 +361,15 @@ fun app() {
                             }
                         }
 
-                        if (blockState.blocks.isEmpty() && variableState.variables.isEmpty()) {
+                        if (blockState.allBlocks.isEmpty() && variableState.variables.isEmpty()) {
                             errorMessage = "No Terraform resources or variables found in files"
                             return@launch
                         }
-                        
+
                         // Save the project with the imported resources
                         ProjectManager.saveProject(
                             project = project,
-                            blocks = blockState.blocks,
+                            blocks = blockState.allBlocks,
                             variables = variableState.variables,
                             connections = blockState.connections
                         )
