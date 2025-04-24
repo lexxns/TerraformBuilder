@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import terraformbuilder.components.block.Block
 
 class EditorViewState {
     // The current view mode
@@ -35,7 +36,6 @@ class EditorViewState {
     var panOffset by mutableStateOf(Offset.Zero)
         private set
     var scale by mutableStateOf(1f)
-        private set
 
     // Drag state
     var isDragging by mutableStateOf(false)

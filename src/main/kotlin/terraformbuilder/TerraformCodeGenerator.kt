@@ -1,8 +1,9 @@
 package terraformbuilder.terraformbuilder
 
 import terraformbuilder.ResourceType
-import terraformbuilder.components.Block
-import terraformbuilder.components.Connection
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockType
+import terraformbuilder.components.block.Connection
 import terraformbuilder.terraform.TerraformConstants
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.terraform.VariableType
@@ -461,7 +462,7 @@ class TerraformCodeGenerator {
             val resourceType = block.resourceType.resourceName
 
             when (block.type) {
-                terraformbuilder.components.BlockType.LOAD_BALANCER -> {
+                BlockType.LOAD_BALANCER -> {
                     outputs.add(
                         """
                     output "${resourceName}_dns_name" {
@@ -472,7 +473,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                terraformbuilder.components.BlockType.EC2 -> {
+                BlockType.EC2 -> {
                     outputs.add(
                         """
                     output "${resourceName}_public_ip" {
@@ -483,7 +484,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                terraformbuilder.components.BlockType.RDS -> {
+                BlockType.RDS -> {
                     outputs.add(
                         """
                     output "${resourceName}_endpoint" {
@@ -494,7 +495,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                terraformbuilder.components.BlockType.LAMBDA -> {
+                BlockType.LAMBDA -> {
                     outputs.add(
                         """
                     output "${resourceName}_function_name" {
@@ -505,7 +506,7 @@ class TerraformCodeGenerator {
                     )
                 }
 
-                terraformbuilder.components.BlockType.API_GATEWAY -> {
+                BlockType.API_GATEWAY -> {
                     outputs.add(
                         """
                     output "${resourceName}_invoke_url" {

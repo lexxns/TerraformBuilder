@@ -2,7 +2,7 @@ package terraformbuilder.github
 
 import org.junit.Test
 import terraformbuilder.ResourceType
-import terraformbuilder.components.BlockType
+import terraformbuilder.components.block.BlockType
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformParser
 import terraformbuilder.terraform.TerraformProperties

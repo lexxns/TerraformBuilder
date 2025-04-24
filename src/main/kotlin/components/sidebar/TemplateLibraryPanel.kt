@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.sidebar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,6 +19,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import terraformbuilder.components.block.CompositeBlock
+import terraformbuilder.components.block.CompositeBlockFactory
 
 @Composable
 fun templateLibraryPanel(

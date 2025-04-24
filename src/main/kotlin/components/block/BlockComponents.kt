@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.block
 
 // Add new imports
 import androidx.compose.animation.core.animateFloatAsState

@@ -3,6 +3,9 @@ package terraformbuilder.components
 import androidx.compose.ui.geometry.Offset
 import org.junit.Test
 import terraformbuilder.ResourceType
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockType
+import terraformbuilder.components.block.ConnectionPointType
 import kotlin.test.assertEquals
 
 class BlockViewTest {

@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.dialog
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 
 @Composable
-fun GithubUrlDialog(
+fun githubUrlDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
     isLoading: Boolean = false,
@@ -36,7 +36,7 @@ fun GithubUrlDialog(
 
                 OutlinedTextField(
                     value = url,
-                    onValueChange = { 
+                    onValueChange = {
                         url = it
                         validationError = null
                     },

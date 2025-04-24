@@ -6,10 +6,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import terraformbuilder.ResourceType
-import terraformbuilder.components.Block
-import terraformbuilder.components.BlockState
-import terraformbuilder.components.BlockType
-import terraformbuilder.components.Connection
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockState
+import terraformbuilder.components.block.BlockType
+import terraformbuilder.components.block.Connection
 import terraformbuilder.github.GithubRepoInfo
 import terraformbuilder.github.MockGithubService
 import terraformbuilder.terraformbuilder.TerraformCodeGenerator

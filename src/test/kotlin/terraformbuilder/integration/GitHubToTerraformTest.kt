@@ -2,8 +2,8 @@ package terraformbuilder.integration
 
 import org.junit.Test
 import terraformbuilder.ResourceType
-import terraformbuilder.components.BlockState
-import terraformbuilder.components.BlockType
+import terraformbuilder.components.block.BlockState
+import terraformbuilder.components.block.BlockType
 import terraformbuilder.github.GithubRepoInfo
 import terraformbuilder.github.MockGithubService
 import terraformbuilder.terraform.TerraformParser
@@ -77,19 +77,19 @@ class GitHubToTerraformTest {
         }
 
         // 6. Verify blocks were created with correct types
-        assertTrue(blockState.blocks.isNotEmpty(), "Should create blocks from resources")
+        assertTrue(blockState.allBlocks.isNotEmpty(), "Should create blocks from resources")
 
         // Check for specific block types
-        val lambdaBlock = blockState.blocks.find { it.resourceType == ResourceType.LAMBDA_FUNCTION }
+        val lambdaBlock = blockState.allBlocks.find { it.resourceType == ResourceType.LAMBDA_FUNCTION }
         assertNotNull(lambdaBlock, "Should create Lambda function block")
         assertEquals(BlockType.LAMBDA, lambdaBlock.type)
 
-        val apiGatewayBlock = blockState.blocks.find { it.resourceType == ResourceType.API_GATEWAY_REST_API }
+        val apiGatewayBlock = blockState.allBlocks.find { it.resourceType == ResourceType.API_GATEWAY_REST_API }
         assertNotNull(apiGatewayBlock, "Should create API Gateway block")
         assertEquals(BlockType.INTEGRATION, apiGatewayBlock.type)
 
         // 7. Check that all blocks have the correct properties from the original Terraform files
-        val deploymentBlock = blockState.blocks.find {
+        val deploymentBlock = blockState.allBlocks.find {
             it.resourceType == ResourceType.API_GATEWAY_DEPLOYMENT
         }
         assertNotNull(deploymentBlock, "Should create API Gateway Deployment block")
@@ -103,7 +103,7 @@ class GitHubToTerraformTest {
         )
 
         // Check for the stage block
-        val stageBlock = blockState.blocks.find {
+        val stageBlock = blockState.allBlocks.find {
             it.resourceType == ResourceType.API_GATEWAY_STAGE
         }
         assertNotNull(stageBlock, "Should create API Gateway Stage block")

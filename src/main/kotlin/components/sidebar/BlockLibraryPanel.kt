@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.sidebar
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import terraformbuilder.ResourceType
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockType
+import terraformbuilder.components.block.createBlock
 import terraformbuilder.terraform.ResourceTypeCategorizer
 import terraformbuilder.terraform.TerraformProperties
 import java.util.*

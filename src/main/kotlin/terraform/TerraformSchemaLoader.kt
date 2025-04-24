@@ -52,7 +52,7 @@ class TerraformSchemaLoader {
                 val resourceSchema = schema.path(resourceType.resourceName)
                 if (!resourceSchema.isMissingNode) {
                     // Get the description from the block section
-                    val blockNode = resourceSchema.path("block")
+                    val blockNode = resourceSchema.path("components/block")
                     if (!blockNode.isMissingNode) {
                         val description = blockNode.path("description").asText("")
                         descriptions[resourceType] = description
@@ -131,7 +131,7 @@ class TerraformSchemaLoader {
 
     private fun extractProperties(schema: JsonNode): List<TerraformProperty> {
         val properties = mutableListOf<TerraformProperty>()
-        val attributes = schema.path("block").path("attributes")
+        val attributes = schema.path("components/block").path("attributes")
 
         attributes.fields().forEach { (name, details) ->
             val description = details.path("description").asText("")
@@ -172,12 +172,12 @@ class TerraformSchemaLoader {
      * Process nested blocks like inline_policy which might contain policy fields
      */
     private fun processNestedBlocks(schema: JsonNode, properties: MutableList<TerraformProperty>) {
-        val blockTypes = schema.path("block").path("block_types")
+        val blockTypes = schema.path("components/block").path("block_types")
 
         blockTypes.fields().forEach { (blockName, blockDetails) ->
             // For policy-related blocks, mark their policy fields as JSON
             if (blockName.contains("policy") || blockName.contains("document")) {
-                val nestedAttributes = blockDetails.path("block").path("attributes")
+                val nestedAttributes = blockDetails.path("components/block").path("attributes")
 
                 nestedAttributes.fields().forEach { (fieldName, fieldDetails) ->
                     val fieldDescription = fieldDetails.path("description").asText("")

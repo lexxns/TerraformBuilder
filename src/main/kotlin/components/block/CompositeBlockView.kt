@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.block
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
