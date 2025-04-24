@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.dialog
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

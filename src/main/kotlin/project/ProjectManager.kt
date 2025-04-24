@@ -1,8 +1,8 @@
 package terraformbuilder.project
 
 import kotlinx.serialization.json.Json
-import terraformbuilder.components.Block
-import terraformbuilder.components.Connection
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.Connection
 import terraformbuilder.terraform.TerraformVariable
 import terraformbuilder.utils.SystemPaths
 import java.io.File
@@ -142,7 +142,7 @@ object ProjectManager {
     fun loadConnections(projectId: String): List<Connection> {
         val projectDir = File(projectsDir, projectId)
         val connectionsFile = File(projectDir, "connections.json")
-        
+
         if (connectionsFile.exists()) {
             try {
                 println("Loading connections from: ${connectionsFile.absolutePath}")

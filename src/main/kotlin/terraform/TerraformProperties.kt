@@ -1,7 +1,7 @@
 package terraformbuilder.terraform
 
 import terraformbuilder.ResourceType
-import terraformbuilder.components.Block
+import terraformbuilder.components.block.Block
 
 /**
  * Represents a property for a Terraform resource

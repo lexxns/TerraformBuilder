@@ -1,4 +1,4 @@
-package components
+package terraformbuilder.terraform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -7,8 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import terraformbuilder.components.BlockState
-import terraformbuilder.terraform.VariableState
+import terraformbuilder.components.block.BlockState
 import terraformbuilder.terraformbuilder.TerraformCodeGenerator
 import java.awt.FileDialog
 import java.awt.Frame

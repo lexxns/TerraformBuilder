@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.block
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color

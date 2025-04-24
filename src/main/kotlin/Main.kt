@@ -16,9 +16,9 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
-import terraformbuilder.components.BlockState
+import terraformbuilder.components.block.BlockState
+import terraformbuilder.components.dialog.loadDirectoryDialog
 import terraformbuilder.components.editor
-import terraformbuilder.components.loadDirectoryDialog
 import terraformbuilder.project.Project
 import terraformbuilder.project.ProjectManager
 import terraformbuilder.project.launcherScreen

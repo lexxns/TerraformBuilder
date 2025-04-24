@@ -3,7 +3,7 @@ package terraformbuilder.terraform
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import terraformbuilder.ResourceType
-import terraformbuilder.components.BlockType
+import terraformbuilder.components.block.BlockType
 
 class ResourceTypeCategorizerTest {
     private val categorizer = ResourceTypeCategorizer()

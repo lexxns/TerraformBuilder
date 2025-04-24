@@ -3,8 +3,8 @@ package terraformbuilder.terraform
 import com.bertramlabs.plugins.hcl4j.HCLParser
 import org.json.JSONObject
 import terraformbuilder.ResourceType
-import terraformbuilder.components.Block
-import terraformbuilder.components.BlockType
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockType
 import java.io.StringReader
 
 data class TerraformResource(
@@ -272,31 +272,6 @@ class TerraformParser {
 
     private fun determineBlockType(resourceType: ResourceType): BlockType {
         return categorizer.determineBlockType(resourceType)
-    }
-
-    private fun debugPrintStructure(map: Map<*, *>, indent: String = "") {
-        map.forEach { (key, value) ->
-            when (value) {
-                is Map<*, *> -> {
-                    println("$indent$key:")
-                    debugPrintStructure(value, "$indent  ")
-                }
-
-                is List<*> -> {
-                    println("$indent$key: [")
-                    value.forEach { item ->
-                        if (item is Map<*, *>) {
-                            debugPrintStructure(item, "$indent  ")
-                        } else {
-                            println("$indent  $item")
-                        }
-                    }
-                    println("$indent]")
-                }
-
-                else -> println("$indent$key: $value")
-            }
-        }
     }
 
     private fun createVariableFromConfig(name: String, config: Map<*, *>): TerraformVariable {

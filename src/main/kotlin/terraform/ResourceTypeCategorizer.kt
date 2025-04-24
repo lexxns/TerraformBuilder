@@ -1,7 +1,7 @@
 package terraformbuilder.terraform
 
 import terraformbuilder.ResourceType
-import terraformbuilder.components.BlockType
+import terraformbuilder.components.block.BlockType
 
 /**
  * Handles the categorization of ResourceTypes into BlockTypes based on AWS product/service.

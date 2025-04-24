@@ -1,4 +1,4 @@
-package terraformbuilder.components
+package terraformbuilder.components.properties
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +26,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import terraformbuilder.components.block.Block
+import terraformbuilder.components.block.BlockTypeColors
 import terraformbuilder.terraform.PropertyType
 import terraformbuilder.terraform.TerraformProperties
 import terraformbuilder.terraform.TerraformProperty

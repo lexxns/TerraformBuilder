@@ -50,3 +50,10 @@ object TerraformConstants {
         return matches.map { it.groupValues[1] }.toList()
     }
 }
+
+// Format resource name for Terraform compatibility
+// Should match the format used in TerraformCodeGenerator.formatResourceName
+fun formatResourceName(content: String): String {
+    // Convert to valid Terraform resource name: lowercase, underscores, no special chars
+    return content.lowercase().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
+}
